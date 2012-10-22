@@ -17,13 +17,13 @@
 #include "mythuistatetype.h"
 
 // libmythtv
-#include "bdringbuffer.h"
 #include "channelutil.h"
 #include "teletextscreen.h"
 #include "subtitlescreen.h"
 #include "interactivescreen.h"
-#include "bdoverlayscreen.h"
 #include "osd.h"
+#include "Bluray/bdringbuffer.h"
+#include "Bluray/bdoverlayscreen.h"
 
 #define LOC     QString("OSD: ")
 
@@ -314,12 +314,12 @@ void OSD::LoadWindows(void)
                     QString("Loaded window %1").arg(window));
                 m_Children.insert(window, win);
             }
-        }
-        else
-        {
-            LOG(VB_GENERAL, LOG_ERR, LOC + QString("Failed to load window %1")
-                .arg(window));
-            delete win;
+            else
+            {
+                LOG(VB_GENERAL, LOG_ERR, LOC + QString("Failed to load window %1")
+                    .arg(window));
+                delete win;
+            }
         }
     }
 }
@@ -373,7 +373,7 @@ void OSD::SetValues(const QString &window, QHash<QString,float> &map,
     {
         MythUIEditBar *edit = dynamic_cast<MythUIEditBar *> (win->GetChild("editbar"));
         if (edit)
-            edit->SetPosition(map.value("position"));
+            edit->SetEditPosition(map.value("position"));
     }
 
     if (found)
@@ -440,7 +440,7 @@ void OSD::SetText(const QString &window, QHash<QString,QString> &map,
             if (!iconpath.isEmpty())
             {
                 QString iconurl =
-                                gCoreContext->GetMasterHostPrefix("ChannelIcon",
+                                gCoreContext->GetMasterHostPrefix("ChannelIcons",
                                                                   iconpath);
 
                 icon->SetFilename(iconurl);
@@ -498,7 +498,7 @@ void OSD::SetText(const QString &window, QHash<QString,QString> &map,
     {
         int startts = map["startts"].toInt();
         int endts   = map["endts"].toInt();
-        int nowts   = QDateTime::currentDateTime().toTime_t();
+        int nowts   = MythDate::current().toTime_t();
         if (startts > nowts)
         {
             bar->SetUsed(0);
@@ -609,7 +609,7 @@ bool OSD::DrawDirect(MythPainter* painter, QSize size, bool repaint)
     bool visible = false;
     bool redraw  = m_Refresh;
     m_Refresh    = false;
-    QTime now = QTime::currentTime();
+    QTime now = MythDate::current().time();
 
     CheckExpiry();
     QMap<QString,MythScreenType*>::const_iterator it;
@@ -664,7 +664,7 @@ QRegion OSD::Draw(MythPainter* painter, QPaintDevice *device, QSize size,
     if (!painter || !device)
         return visible;
 
-    QTime now = QTime::currentTime();
+    QTime now = MythDate::current().time();
     CheckExpiry();
 
     // first update for alpha pulse and fade
@@ -757,7 +757,7 @@ QRegion OSD::Draw(MythPainter* painter, QPaintDevice *device, QSize size,
 
 void OSD::CheckExpiry(void)
 {
-    QDateTime now = QDateTime::currentDateTime();
+    QDateTime now = MythDate::current();
     QMutableHashIterator<MythScreenType*, QDateTime> it(m_ExpireTimes);
     while (it.hasNext())
     {
@@ -803,7 +803,7 @@ void OSD::SetExpiry(const QString &window, enum OSDTimeout timeout,
     int time = custom_timeout ? custom_timeout : m_Timeouts[timeout];
     if ((time > 0) && win)
     {
-        QDateTime expires = QDateTime::currentDateTime().addMSecs(time);
+        QDateTime expires = MythDate::current().addMSecs(time);
         m_ExpireTimes.insert(win, expires);
     }
     else if ((time < 0) && win)
@@ -990,6 +990,7 @@ void OSD::DialogShow(const QString &window, const QString &text, int updatefor)
     {
         OverrideUIScale();
         MythScreenType *dialog;
+
         if (window == OSD_DLG_EDITOR)
             dialog = new ChannelEditor(m_ParentObject, window.toLatin1());
         else if (window == OSD_DLG_CONFIRM)
@@ -997,24 +998,21 @@ void OSD::DialogShow(const QString &window, const QString &text, int updatefor)
         else
             dialog = new MythDialogBox(text, NULL, window.toLatin1(), false, true);
 
-        if (dialog)
+        dialog->SetPainter(m_CurrentPainter);
+        if (dialog->Create())
         {
-            dialog->SetPainter(m_CurrentPainter);
-            if (dialog->Create())
+            PositionWindow(dialog);
+            m_Dialog = dialog;
+            MythDialogBox *dbox = dynamic_cast<MythDialogBox*>(m_Dialog);
+            if (dbox)
+                dbox->SetReturnEvent(m_ParentObject, window);
+            MythConfirmationDialog *cbox = dynamic_cast<MythConfirmationDialog*>(m_Dialog);
+            if (cbox)
             {
-                PositionWindow(dialog);
-                m_Dialog = dialog;
-                MythDialogBox *dbox = dynamic_cast<MythDialogBox*>(m_Dialog);
-                if (dbox)
-                    dbox->SetReturnEvent(m_ParentObject, window);
-                MythConfirmationDialog *cbox = dynamic_cast<MythConfirmationDialog*>(m_Dialog);
-                if (cbox)
-                {
-                    cbox->SetReturnEvent(m_ParentObject, window);
-                    cbox->SetData("DIALOG_CONFIRM_X_X");
-                }
-                m_Children.insert(window, m_Dialog);
+                cbox->SetReturnEvent(m_ParentObject, window);
+                cbox->SetData("DIALOG_CONFIRM_X_X");
             }
+            m_Children.insert(window, m_Dialog);
         }
         else
         {
@@ -1022,12 +1020,13 @@ void OSD::DialogShow(const QString &window, const QString &text, int updatefor)
             delete dialog;
             return;
         }
+
         RevertUIScale();
     }
 
     if (updatefor)
     {
-        m_NextPulseUpdate  = QDateTime::currentDateTime();
+        m_NextPulseUpdate  = MythDate::current();
         m_PulsedDialogText = text;
         SetExpiry(window, kOSDTimeout_None, updatefor);
     }

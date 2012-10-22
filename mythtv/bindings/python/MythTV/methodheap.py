@@ -4,15 +4,15 @@
 Provides base classes for accessing MythTV
 """
 
-from static import *
-from exceptions import *
-from logging import MythLog
-from connections import FEConnection, XMLConnection, BEEventConnection
-from utility import databaseSearch, datetime, check_ipv6
-from database import DBCache, DBData
-from system import SystemEvent
-from mythproto import BECache, FileOps, Program, FreeSpace, EventLock
-from dataheap import *
+from MythTV.static import *
+from MythTV.exceptions import *
+from MythTV.logging import MythLog
+from MythTV.connections import FEConnection, XMLConnection, BEEventConnection
+from MythTV.utility import databaseSearch, datetime, check_ipv6, _donothing
+from MythTV.database import DBCache, DBData
+from MythTV.system import SystemEvent
+from MythTV.mythproto import BECache, FileOps, Program, FreeSpace, EventLock
+from MythTV.dataheap import *
 
 from datetime import timedelta
 from weakref import proxy
@@ -84,7 +84,7 @@ class MythBE( FileOps ):
 
     @FileOps._ProgramQuery('QUERY_GETALLPENDING', header_length=1, sorted=True,
                            recstatus=Program.rsConflict)
-    def getConflictedRecordings(self):
+    def getConflictedRecordings(self, pg):
         """
         Retuns a list of Program objects subject to conflicts in the schedule.
         """
@@ -489,13 +489,11 @@ class Frontend( FEConnection ):
 
         def __init__(self, parent):
             self._parent = proxy(parent)
-            self._populated = False
             self._points = {}
 
         def _populate(self):
-            if not self._populated:
-                self._points = dict(self._parent.send('jump'))
-                self._populated = True
+            self._populate = _donothing
+            self._points = dict(self._parent.send('jump'))
 
         def __getitem__(self, key):
             self._populate()
@@ -505,6 +503,7 @@ class Frontend( FEConnection ):
                 return False
 
         def __getattr__(self, key):
+            self._populate()
             if key in self.__dict__:
                 return self.__dict__[key]
             return self.__getitem__(key)
@@ -534,13 +533,11 @@ class Frontend( FEConnection ):
 
         def __init__(self, parent):
             self._parent = proxy(parent)
-            self._populated = False
             self._keys = []
 
         def _populate(self):
-            if not self._populated:
-                self._keys = self._parent.send('key')
-                self._populated = True
+            self._populate = _donothing
+            self._keys = self._parent.send('key')
 
         def _sendLiteral(self, key):
             if (key in self._keys) or (key in self._alnum):
@@ -568,6 +565,7 @@ class Frontend( FEConnection ):
                 return False
 
         def __getattr__(self, key):
+            self._populate()
             if key in self.__dict__:
                 return self.__dict__[key]
             return self._sendLiteral(key)
@@ -1115,25 +1113,6 @@ class MythXML( XMLConnection ):
                     raise MythDBError(MythError.DB_SETTING, 
                                         backend+': BackendStatusPort')
 
-    def getServDesc(self):
-        """
-        Returns a dictionary of valid pages, as well as input and output
-        arguments.
-        """
-        
-        #TODO - handle namespaces better
-        tree = self._queryTree('GetServDesc')
-        index = tree.tag.rindex('}')+1
-        find = lambda e,c: e.find('%s%s' % (tree.tag[:index], c))
-
-        for a in find(tree, 'actionList'):
-            act = [find(a,'name').text, {'in':[], 'out':[]}]
-            for arg in find(a, 'argumentList'):
-                argname = find(arg, 'name').text
-                argdirec = find(arg, 'direction').text
-                act[1][argdirec].append(argname)
-            yield act
-
     def getHosts(self):
         """Returns a list of unique hostnames found in the settings table."""
         return self._request('Myth/GetHosts')\
@@ -1160,8 +1139,8 @@ class MythXML( XMLConnection ):
         """
         starttime = datetime.duck(starttime)
         endtime = datetime.duck(endtime)
-        args = {'StartTime':starttime.isoformat().rsplit('.',1)[0],
-                'EndTime':endtime.isoformat().rsplit('.',1)[0], 
+        args = {'StartTime':starttime.utcisoformat().rsplit('.',1)[0],
+                'EndTime':endtime.utcisoformat().rsplit('.',1)[0], 
                 'StartChanId':startchan, 'Details':1}
         if numchan:
             args['NumOfChannels'] = numchan
@@ -1179,7 +1158,7 @@ class MythXML( XMLConnection ):
         Returns a Program object for the matching show.
         """
         starttime = datetime.duck(starttime)
-        args = {'ChanId': chanid, 'StartTime': starttime.isoformat()}
+        args = {'ChanId': chanid, 'StartTime': starttime.utcisoformat()}
         return Program.fromJSON(
                 self._request('Guide/GetProgramDetails', **args)\
                     .readJSON()['Program'],
@@ -1201,7 +1180,7 @@ class MythXML( XMLConnection ):
         """
         Returns a list of Program objects for expiring shows on the backend.
         """
-        for prog in self._request('Dvr/GetExpiring')\
+        for prog in self._request('Dvr/GetExpiringList')\
                     .readJSON()['ProgramList']['Programs']:
             yield Program.fromJSON(prog, self.db)
 
@@ -1217,7 +1196,7 @@ class MythXML( XMLConnection ):
     def getPreviewImage(self, chanid, starttime, width=None, \
                                                  height=None, secsin=None):
         starttime = datetime.duck(starttime)
-        args = {'ChanId':chanid, 'StartTime':starttime.isoformat()}
+        args = {'ChanId':chanid, 'StartTime':starttime.utcisoformat()}
         if width: args['Width'] = width
         if height: args['Height'] = height
         if secsin: args['SecsIn'] = secsin

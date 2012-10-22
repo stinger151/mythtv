@@ -44,6 +44,8 @@ using namespace std;
 #include "mythsignalingtimer.h"
 #include "mythcorecontext.h"
 #include "mythmedia.h"
+#include "mythmiscutil.h"
+#include "mythdate.h"
 
 // libmythui headers
 #include "myththemebase.h"
@@ -342,7 +344,8 @@ MythMainWindow *MythMainWindow::getMainWindow(const bool useDB)
 
 void MythMainWindow::destroyMainWindow(void)
 {
-    gCoreContext->SetGUIObject(NULL);
+    if (gCoreContext)
+        gCoreContext->SetGUIObject(NULL);
     delete mainWin;
     mainWin = NULL;
 }
@@ -632,8 +635,11 @@ void MythMainWindow::AddScreenStack(MythScreenStack *stack, bool main)
 
 void MythMainWindow::PopScreenStack()
 {
-    delete d->stackList.back();
+    MythScreenStack *stack = d->stackList.back();
     d->stackList.pop_back();
+    if (stack == d->mainStack)
+        d->mainStack = NULL;
+    delete stack;
 }
 
 int MythMainWindow::GetStackCount(void)
@@ -859,7 +865,8 @@ bool MythMainWindow::SaveScreenShot(const QImage &image, QString filename)
     {
         QString fpath = GetMythDB()->GetSetting("ScreenShotPath", "/tmp");
         filename = QString("%1/myth-screenshot-%2.png").arg(fpath)
-         .arg(QDateTime::currentDateTime().toString("yyyy-MM-ddThh-mm-ss.zzz"));
+            .arg(MythDate::toString(
+                     MythDate::current(), MythDate::kScreenShotFilename));
     }
 
     QString extension = filename.section('.', -1, -1);
@@ -926,7 +933,7 @@ bool MythMainWindow::event(QEvent *e)
     return QWidget::event(e);
 }
 
-void MythMainWindow::Init(void)
+void MythMainWindow::Init(QString forcedpainter)
 {
     GetMythUI()->GetScreenSettings(d->xbase, d->screenwidth, d->wmult,
                                    d->ybase, d->screenheight, d->hmult);
@@ -996,18 +1003,19 @@ void MythMainWindow::Init(void)
         d->render = NULL;
     }
 
-    QString painter = GetMythDB()->GetSetting("ThemePainter", "qt");
+    QString painter = forcedpainter.isEmpty() ?
+        GetMythDB()->GetSetting("ThemePainter", QT_PAINTER) : forcedpainter;
 #ifdef USING_MINGW
-    if (painter == "auto" || painter == "d3d9")
+    if (painter == AUTO_PAINTER || painter == D3D9_PAINTER)
     {
-        LOG(VB_GENERAL, LOG_INFO, "Using the D3D9 painter");
+        LOG(VB_GENERAL, LOG_INFO, QString("Using the %1 painter").arg(D3D9_PAINTER));
         d->painter = new MythD3D9Painter();
         d->paintwin = new MythPainterWindowD3D9(this, d);
     }
 #endif
 #ifdef USE_OPENGL_PAINTER
-    if ((painter == "auto" && (!d->painter && !d->paintwin)) ||
-        painter.contains("opengl"))
+    if ((painter == AUTO_PAINTER && (!d->painter && !d->paintwin)) ||
+        painter.contains(OPENGL_PAINTER))
     {
         LOG(VB_GENERAL, LOG_INFO, "Trying the OpenGL painter");
         d->painter = new MythOpenGLPainter();
@@ -1024,7 +1032,7 @@ void MythMainWindow::Init(void)
                                          "Check your OpenGL installation.");
                 teardown = true;
             }
-            else if (painter == "auto" && gl && !gl->IsRecommendedRenderer())
+            else if (painter == AUTO_PAINTER && gl && !gl->IsRecommendedRenderer())
             {
                 LOG(VB_GENERAL, LOG_WARNING,
                     "OpenGL painter not recommended with this system's "
@@ -1601,7 +1609,7 @@ void MythMainWindow::BindKey(const QString &context, const QString &action,
     if (!d->keyContexts.contains(context))
         d->keyContexts.insert(context, new KeyContext());
 
-    for (unsigned int i = 0; i < keyseq.count(); i++)
+    for (unsigned int i = 0; i < (uint)keyseq.count(); i++)
     {
         int keynum = keyseq[i];
         keynum &= ~Qt::UNICODE_ACCEL;
@@ -1748,7 +1756,7 @@ void MythMainWindow::BindJump(const QString &destination, const QString &key)
 
     QKeySequence keyseq(key);
 
-    for (unsigned int i = 0; i < keyseq.count(); i++)
+    for (unsigned int i = 0; i < (uint)keyseq.count(); i++)
     {
         int keynum = keyseq[i];
         keynum &= ~Qt::UNICODE_ACCEL;
@@ -2081,7 +2089,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
                 d->gestureTimer->stop();
                 d->gestureTimer->start(GESTURE_TIMEOUT);
 
-                d->gesture.record(dynamic_cast<QMouseEvent*>(e)->pos());
+                d->gesture.record(static_cast<QMouseEvent*>(e)->pos());
                 return true;
             }
             break;
@@ -2090,7 +2098,7 @@ bool MythMainWindow::eventFilter(QObject *, QEvent *e)
         {
             ResetIdleTimer();
             ShowMouseCursor(true);
-            QWheelEvent* qmw = dynamic_cast<QWheelEvent*>(e);
+            QWheelEvent* qmw = static_cast<QWheelEvent*>(e);
             int delta = qmw->delta();
             if (delta>0)
             {
@@ -2316,6 +2324,14 @@ void MythMainWindow::customEvent(QEvent *ce)
     else if (ce->type() == MythEvent::kUnlockInputDevicesEventType)
     {
         LockInputDevices(false);
+    }
+    else if (ce->type() == MythEvent::kDisableUDPListenerEventType)
+    {
+        d->m_udpListener->Disable();
+    }
+    else if (ce->type() == MythEvent::kEnableUDPListenerEventType)
+    {
+        d->m_udpListener->Enable();
     }
     else if ((MythEvent::Type)(ce->type()) == MythEvent::MythEventMessage)
     {

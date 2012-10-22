@@ -38,7 +38,8 @@ enum MusicView
     MV_ARTISTINFO,
     MV_ALBUMINFO,
     MV_TRACKINFO,
-    MV_RADIO
+    MV_RADIO,
+    MV_MINIPLAYER
 };
 
 Q_DECLARE_METATYPE(MusicView);
@@ -61,8 +62,6 @@ class MPUBLIC MusicCommon : public MythScreenType
 
     virtual void ShowMenu(void);
 
-    //bool onMediaEvent(MythMediaDevice *pDev);
-
   protected slots:
 
     void play(void);
@@ -75,8 +74,6 @@ class MPUBLIC MusicCommon : public MythScreenType
     void seek(int);
     void stopAll(void);
     void changeRating(bool increase);
-//    void editPlaylist(void);
-//    void nextAuto(void);
 
     void searchButtonList(void);
     MythMenu* createMainMenu(void);
@@ -105,6 +102,7 @@ class MPUBLIC MusicCommon : public MythScreenType
     void showExitMenu(void);
     void showPlaylistOptionsMenu(bool addMainMenu = false);
 
+  protected:
     QString getTimeString(int exTime, int maxTime);
     void updateProgressBar(void);
     void setTrackOnLCD(Metadata *mdata);
@@ -115,7 +113,7 @@ class MPUBLIC MusicCommon : public MythScreenType
     void updatePlaylistStats(void);
     void updateUIPlayedList(void);    // for streaming
     void updateRepeatMode(void);
-    void updateShuffleMode(void);
+    void updateShuffleMode(bool updateUIList = false);
 
     void changeVolume(bool up);
     void changeSpeed(bool up);

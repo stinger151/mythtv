@@ -161,7 +161,8 @@ void VideoOutputVDPAU::DeleteRender(void)
         if (m_decoder)
             m_render->DestroyDecoder(m_decoder);
 
-        delete m_render;
+        m_render->DecrRef();
+        m_render = NULL;
     }
 
     m_checked_output_surfaces = false;
@@ -1307,4 +1308,14 @@ QStringList VideoOutputVDPAU::GetVisualiserList(void)
     if (m_render)
         return VideoVisual::GetVisualiserList(m_render->Type());
     return VideoOutput::GetVisualiserList();
+}
+
+void VideoOutputVDPAU::SetVideoFlip(void)
+{
+    if (!m_render)
+    {
+        LOG(VB_PLAYBACK, LOG_ERR, QString("SetVideoFlip failed."));
+        return;
+    }
+    m_render->SetVideoFlip();
 }

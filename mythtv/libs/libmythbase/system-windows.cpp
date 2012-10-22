@@ -277,11 +277,13 @@ void MythSystemManager::run(void)
 
         // Occasionally, the caller has deleted the structure from under
         // our feet.  If so, just log and move on.
-        if (!ms)
+        if (!ms || !ms->m_parent)
         {
             LOG(VB_SYSTEM, LOG_ERR,
                 QString("Structure for child handle %1 already deleted!")
                 .arg((long long)child));
+            if (ms)
+                ms->DecrRef();
             continue;
         }
 
@@ -395,11 +397,11 @@ void MythSystemManager::ChildListRebuild()
 void MythSystemManager::append(MythSystemWindows *ms)
 {
     m_mapLock.lock();
+    ms->IncrRef();
     m_pMap.insert(ms->m_child, ms);
     ChildListRebuild();
     m_mapLock.unlock();
 
-    fdLock.lock();
     if( ms->GetSetting("UseStdin") )
         writeThread->insert(ms->m_stdpipe[0], ms->GetBuffer(0));
 
@@ -408,7 +410,9 @@ void MythSystemManager::append(MythSystemWindows *ms)
         FDType_t *fdType = new FDType_t;
         fdType->ms = ms;
         fdType->type = 1;
+        fdLock.lock();
         fdMap.insert( ms->m_stdpipe[1], fdType );
+        fdLock.unlock();
         readThread->insert(ms->m_stdpipe[1], ms->GetBuffer(1));
     }
 
@@ -417,10 +421,11 @@ void MythSystemManager::append(MythSystemWindows *ms)
         FDType_t *fdType = new FDType_t;
         fdType->ms = ms;
         fdType->type = 2;
+        fdLock.lock();
         fdMap.insert( ms->m_stdpipe[2], fdType );
+        fdLock.unlock();
         readThread->insert(ms->m_stdpipe[2], ms->GetBuffer(2));
     }
-    fdLock.unlock();
 }
 
 void MythSystemManager::jumpAbort(void)
@@ -457,7 +462,13 @@ void MythSystemSignalManager::run(void)
             MythSystemWindows *ms = msList.takeFirst();
             listLock.unlock();
 
-            ms->m_parent->HandlePostRun();
+            if (!ms)
+                continue;
+
+            if (ms->m_parent)
+            {
+                ms->m_parent->HandlePostRun();
+            }
 
             if (ms->m_stdpipe[0])
                 writeThread->remove(ms->m_stdpipe[0]);
@@ -471,17 +482,18 @@ void MythSystemSignalManager::run(void)
                 readThread->remove(ms->m_stdpipe[2]);
             CLOSE(ms->m_stdpipe[2]);
 
-            if( ms->GetStatus() == GENERIC_EXIT_OK )
-                emit ms->finished();
-            else
-                emit ms->error(ms->GetStatus());
+            if (ms->m_parent)
+            {
+                if( ms->GetStatus() == GENERIC_EXIT_OK )
+                    emit ms->finished();
+                else
+                    emit ms->error(ms->GetStatus());
 
-            ms->disconnect();
+                ms->disconnect();
+                ms->Unlock();
+            }
 
-            ms->Unlock();
-
-            if( ms->m_parent->doAutoCleanup() )
-                delete ms;
+            ms->DecrRef();
         }
     }
 
@@ -492,44 +504,50 @@ void MythSystemSignalManager::run(void)
  * MythSystem method defines
  ******************************/
 
-MythSystemWindows::MythSystemWindows(MythSystem *parent)
+MythSystemWindows::MythSystemWindows(MythSystem *parent) :
+    MythSystemPrivate("MythSystemWindows")
 {
     m_parent = parent;
 
-    connect( this, SIGNAL(started()), m_parent, SIGNAL(started()) );
-    connect( this, SIGNAL(finished()), m_parent, SIGNAL(finished()) );
-    connect( this, SIGNAL(error(uint)), m_parent, SIGNAL(error(uint)) );
-    connect( this, SIGNAL(readDataReady(int)), m_parent, SIGNAL(readDataReady(int)) );
+    connect(this, SIGNAL(started()), m_parent, SIGNAL(started()));
+    connect(this, SIGNAL(finished()), m_parent, SIGNAL(finished()));
+    connect(this, SIGNAL(error(uint)), m_parent, SIGNAL(error(uint)));
+    connect(this, SIGNAL(readDataReady(int)),
+            m_parent, SIGNAL(readDataReady(int)));
 
     // Start the threads if they haven't been started yet.
-    if( manager == NULL )
+    if (manager == NULL)
     {
         manager = new MythSystemManager;
         manager->start();
     }
 
-    if( smanager == NULL )
+    if (smanager == NULL)
     {
         smanager = new MythSystemSignalManager;
         smanager->start();
     }
 
-    if( readThread == NULL )
+    if (readThread == NULL)
     {
         readThread = new MythSystemIOHandler(true);
         readThread->start();
     }
 
-    if( writeThread == NULL )
+    if (writeThread == NULL)
     {
         writeThread = new MythSystemIOHandler(false);
         writeThread->start();
     }
 }
 
-// QBuffers may also need freeing
 MythSystemWindows::~MythSystemWindows(void)
 {
+}
+
+bool MythSystemWindows::ParseShell(const QString&, QString &, QStringList&)
+{
+    return false;
 }
 
 void MythSystemWindows::Term(bool force)

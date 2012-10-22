@@ -12,13 +12,14 @@ using namespace std;
 #include <QDir>
 
 // MythTV headers
+#include "mythmiscutil.h"
 #include "exitcodes.h"
 #include "programinfo.h"
 #include "jobqueue.h"
 #include "mythcontext.h"
 #include "mythdb.h"
 #include "mythversion.h"
-#include "mythmiscutil.h"
+#include "mythdate.h"
 #include "transcode.h"
 #include "mpeg2fix.h"
 #include "remotefile.h"
@@ -26,6 +27,7 @@ using namespace std;
 #include "mythlogging.h"
 #include "commandlineparser.h"
 #include "recordinginfo.h"
+#include "signalhandling.h"
 
 static void CompleteJob(int jobID, ProgramInfo *pginfo, bool useCutlist,
                         frm_dir_map_t *deleteMap, int &resultCode);
@@ -67,13 +69,13 @@ static int BuildKeyframeIndex(MPEG2fixup *m2f, QString &infile,
     {
         if (jobID >= 0)
             JobQueue::ChangeJobComment(jobID,
-                QString(QObject::tr("Generating Keyframe Index")));
+                                       QObject::tr("Generating Keyframe Index"));
         int err = m2f->BuildKeyframeIndex(infile, posMap);
         if (err)
             return err;
         if (jobID >= 0)
             JobQueue::ChangeJobComment(jobID,
-                QString(QObject::tr("Transcode Completed")));
+                                       QObject::tr("Transcode Completed"));
     }
     return 0;
 }
@@ -109,14 +111,14 @@ static int QueueTranscodeJob(ProgramInfo *pginfo, QString profile,
     {
         LOG(VB_GENERAL, LOG_NOTICE,
             QString("Queued transcode job for chanid %1 @ %2")
-              .arg(pginfo->GetChanID())
-              .arg(pginfo->GetRecordingStartTime().toString("yyyyMMddhhmmss")));
+            .arg(pginfo->GetChanID())
+            .arg(pginfo->GetRecordingStartTime(MythDate::ISODate)));
         return GENERIC_EXIT_OK;
     }
 
     LOG(VB_GENERAL, LOG_ERR, QString("Error queuing job for chanid %1 @ %2")
-            .arg(pginfo->GetChanID())
-            .arg(pginfo->GetRecordingStartTime().toString("yyyyMMddhhmmss")));
+        .arg(pginfo->GetChanID())
+        .arg(pginfo->GetRecordingStartTime(MythDate::ISODate)));
     return GENERIC_EXIT_DB_ERROR;
 }
 
@@ -126,7 +128,7 @@ namespace
     {
         delete gContext;
         gContext = NULL;
-
+        SignalHandler::Done();
     }
 
     class CleanupGuard
@@ -371,6 +373,18 @@ int main(int argc, char *argv[])
         passthru = true;
 
     CleanupGuard callCleanup(cleanup);
+
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    signal(SIGHUP, SIG_IGN);
+#endif
+
     //  Load the context
     gContext = new MythContext(MYTH_BINARY_VERSION);
     if (!gContext->Init(false))
@@ -480,7 +494,7 @@ int main(int argc, char *argv[])
         {
             LOG(VB_GENERAL, LOG_ERR,
                 QString("Couldn't find recording for chanid %1 @ %2")
-                    .arg(chanid).arg(starttime.toString("yyyyMMddhhmmss")));
+                .arg(chanid).arg(starttime.toString(Qt::ISODate)));
             delete pginfo;
             return GENERIC_EXIT_NO_RECORDING_DATA;
         }
@@ -815,7 +829,7 @@ static void CompleteJob(int jobID, ProgramInfo *pginfo, bool useCutlist,
     if (!pginfo)
     {
         JobQueue::ChangeJobStatus(jobID, JOB_ERRORED,
-                  "Job errored, unable to find Program Info for job");
+            QObject::tr("Job errored, unable to find Program Info for job"));
         return;
     }
 
@@ -1044,12 +1058,13 @@ static void CompleteJob(int jobID, ProgramInfo *pginfo, bool useCutlist,
         unlink(fname_map.constData());
 
         if (status == JOB_ABORTING)                     // Stop command was sent
-            JobQueue::ChangeJobStatus(jobID, JOB_ABORTED, "Job Aborted");
+            JobQueue::ChangeJobStatus(jobID, JOB_ABORTED,
+                                      QObject::tr("Job Aborted"));
         else if (status != JOB_ERRORING)                // Recoverable error
             resultCode = GENERIC_EXIT_RESTART;
         else                                            // Unrecoverable error
             JobQueue::ChangeJobStatus(jobID, JOB_ERRORED,
-                                      "Unrecoverable error");
+                                      QObject::tr("Unrecoverable error"));
     }
 }
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

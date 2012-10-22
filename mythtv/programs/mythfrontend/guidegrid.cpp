@@ -23,7 +23,7 @@ using namespace std;
 #include "tv_play.h"
 #include "tv_rec.h"
 #include "customedit.h"
-#include "mythmiscutil.h"
+#include "mythdate.h"
 #include "remoteutil.h"
 #include "channelutil.h"
 #include "cardutil.h"
@@ -253,7 +253,7 @@ GuideGrid::GuideGrid(MythScreenStack *parent,
             m_programInfos[y][x] = NULL;
     }
 
-    m_originalStartTime = QDateTime::currentDateTime();
+    m_originalStartTime = MythDate::current();
 
     int secsoffset = -((m_originalStartTime.time().minute() % 30) * 60 +
                         m_originalStartTime.time().second());
@@ -523,7 +523,7 @@ bool GuideGrid::keyPressEvent(QKeyEvent *event)
                 ProgramInfo *pginfo =
                     m_programInfos[m_currentRow][m_currentCol];
                 int secsTillStart =
-                    (pginfo) ? QDateTime::currentDateTime().secsTo(
+                    (pginfo) ? MythDate::current().secsTo(
                         pginfo->GetScheduledStartTime()) : 0;
                 if (pginfo && (pginfo->GetTitle() != kUnknownTitle) &&
                     ((secsTillStart / 60) >= m_selectRecThreshold))
@@ -1036,17 +1036,18 @@ void GuideGrid::fillTimeInfos()
         mins = 5 * (mins / 5);
         if (mins % 30 == 0)
         {
-            QString timeStr = MythDateTimeToString(starttime, kTime);
-
+            QString timeStr = MythDate::toString(starttime, MythDate::kTime);
+            
             InfoMap infomap;
             infomap["starttime"] = timeStr;
-
-            QTime endtime = starttime.time().addSecs(60 * 30);
-
-            infomap["endtime"] = MythTimeToString(endtime, kTime);
+            
+            QDateTime endtime = starttime.addSecs(60 * 30);
+            
+            infomap["endtime"] = MythDate::toString(endtime, MythDate::kTime);
 
             MythUIButtonListItem *item =
-                                new MythUIButtonListItem(m_timeList, timeStr);
+                new MythUIButtonListItem(m_timeList, timeStr);
+
             item->SetTextFromMap(infomap);
         }
 
@@ -1125,7 +1126,7 @@ void GuideGrid::fillProgramRowInfos(unsigned int row, bool useExistingData)
 
     QDateTime ts = m_currentStartTime;
 
-    QDateTime tnow = QDateTime::currentDateTime();
+    QDateTime tnow = MythDate::current();
     int progPast = 0;
     if (tnow > m_currentEndTime)
         progPast = 100;
@@ -1440,7 +1441,7 @@ void GuideGrid::customEvent(QEvent *event)
             {
                 editSchedule();
             }
-            else if (resulttext == tr("Upcoming"))
+            else if (resulttext == tr("Show Upcoming"))
             {
                 upcoming();
             }
@@ -1498,10 +1499,10 @@ void GuideGrid::customEvent(QEvent *event)
 void GuideGrid::updateDateText(void)
 {
     if (m_dateText)
-        m_dateText->SetText(MythDateTimeToString(m_currentStartTime, kDateShort));
+        m_dateText->SetText(MythDate::toString(m_currentStartTime, MythDate::kDateShort));
     if (m_longdateText)
-        m_longdateText->SetText(MythDateTimeToString(m_currentStartTime,
-                                                 (kDateFull | kSimplify)));
+        m_longdateText->SetText(MythDate::toString(m_currentStartTime,
+                                                 (MythDate::kDateFull | MythDate::kSimplify)));
 }
 
 void GuideGrid::updateChannels(void)
@@ -1578,7 +1579,7 @@ void GuideGrid::updateChannels(void)
             if (!chinfo->icon.isEmpty())
             {
                 QString iconurl =
-                                gCoreContext->GetMasterHostPrefix("ChannelIcon",
+                                gCoreContext->GetMasterHostPrefix("ChannelIcons",
                                                                   chinfo->icon);
                 item->SetImage(iconurl, "channelicon");
             }
@@ -1612,7 +1613,7 @@ void GuideGrid::updateInfo(void)
         m_channelImage->Reset();
         if (!chinfo->icon.isEmpty())
         {
-            QString iconurl = gCoreContext->GetMasterHostPrefix("ChannelIcon",
+            QString iconurl = gCoreContext->GetMasterHostPrefix("ChannelIcons",
                                                                 chinfo->icon);
 
             m_channelImage->SetFilename(iconurl);
@@ -1667,7 +1668,9 @@ void GuideGrid::generateListings()
 
 void GuideGrid::ChannelGroupMenu(int mode)
 {
-    if (m_changrplist.empty())
+    ChannelGroupList channels = ChannelGroup::GetChannelGroups(mode == 0);
+    
+    if (channels.empty())
     {
       QString message = tr("You don't have any channel groups defined");
 
@@ -1694,19 +1697,19 @@ void GuideGrid::ChannelGroupMenu(int mode)
         {
             // add channel to group menu
             menuPopup->SetReturnEvent(this, "channelgrouptogglemenu");
-            ChannelGroupList channels = ChannelGroup::GetChannelGroups(true);
-            for (uint i = 0; i < channels.size(); ++i)
-                menuPopup->AddButton(channels[i].name);
         }
         else
         {
             // switch to channel group menu
             menuPopup->SetReturnEvent(this, "channelgroupmenu");
             menuPopup->AddButton(QObject::tr("All Channels"));
-            for (uint i = 0; i < m_changrplist.size(); ++i)
-                menuPopup->AddButton(m_changrplist[i].name);
         }
 
+        for (uint i = 0; i < channels.size(); ++i)
+        {
+            menuPopup->AddButton(channels[i].name);
+        }
+        
         popupStack->AddScreen(menuPopup);
     }
     else
@@ -1745,6 +1748,9 @@ void GuideGrid::toggleChannelFavorite(int grpid)
     else
         // Only allow delete if viewing the favorite group in question
         ChannelGroup::ToggleChannel(chanid, grpid, true);
+
+    //regenerate the list of non empty group in case it did change
+    m_changrplist = ChannelGroup::GetChannelGroups(false);
 
     // If viewing favorites, refresh because a channel was removed
     if (m_changrpid != -1)

@@ -26,13 +26,14 @@
 #include "mythsocket.h"
 #include "remotefile.h"
 #include "storagegroup.h"
-#include "mythmiscutil.h"
+#include "mythdate.h"
 #include "playercontext.h"
 #include "mythdirs.h"
 #include "remoteutil.h"
 #include "mythsystem.h"
 #include "exitcodes.h"
 #include "mythlogging.h"
+#include "mythmiscutil.h"
 
 #define LOC QString("Preview: ")
 
@@ -192,7 +193,7 @@ bool PreviewGenerator::RunReal(void)
 bool PreviewGenerator::Run(void)
 {
     QString msg;
-    QDateTime dtm = QDateTime::currentDateTime();
+    QDateTime dtm = MythDate::current();
     QTime tm = QTime::currentTime();
     bool ok = false;
     QString command = GetInstallPrefix() + "/bin/mythpreviewgen";
@@ -223,30 +224,41 @@ bool PreviewGenerator::Run(void)
     else
     {
         // This is where we fork and run mythpreviewgen to actually make preview
-        command += QString(" --size %1x%2")
-            .arg(outSize.width()).arg(outSize.height());
+        QStringList cmdargs;
+
+        cmdargs << "--size"
+                << QString("%1x%2").arg(outSize.width()).arg(outSize.height());
         if (captureTime >= 0)
         {
             if (timeInSeconds)
-                command += QString(" --seconds %1").arg(captureTime);
+                cmdargs << "--seconds";
             else
-                command += QString(" --frame %1").arg(captureTime);
+                cmdargs << "--frame";
+            cmdargs << QString::number(captureTime);
         }
-        command += QString(" --chanid %1").arg(programInfo.GetChanID());
-        command += QString(" --starttime %1")
-            .arg(programInfo.GetRecordingStartTime(MythDate));
+        cmdargs << "--chanid"
+                << QString::number(programInfo.GetChanID())
+                << "--starttime"
+                << programInfo.GetRecordingStartTime(MythDate::kFilename);
 
         if (!outFileName.isEmpty())
-            command += QString(" --outfile \"%1\"").arg(outFileName);
-
-        command += logPropagateArgs;
-        if (!logPropagateQuiet())
-            command += " --quiet";
+            cmdargs << "--outfile" << outFileName;
 
         // Timeout in 30s
-        uint ret = myth_system(command, kMSDontBlockInputDevs |
+        MythSystem *ms = new MythSystem(command, cmdargs,
+                                        kMSDontBlockInputDevs |
                                         kMSDontDisableDrawing |
-                                        kMSProcessEvents, 30);
+                                        kMSProcessEvents      |
+                                        kMSNoRunShell         |
+                                        kMSAutoCleanup        |
+                                        kMSPropagateLogs);
+        ms->SetNice(10);
+        ms->SetIOPrio(7);
+
+        ms->Run(30);
+        uint ret = ms->Wait();
+        delete ms;
+
         if (ret != GENERIC_EXIT_OK)
         {
             LOG(VB_GENERAL, LOG_ERR, LOC + 
@@ -428,7 +440,7 @@ bool PreviewGenerator::event(QEvent *e)
         return true; // could only happen with very broken client...
     }
 
-    QDateTime datetime = QDateTime::fromString(me->ExtraData(3), Qt::ISODate);
+    QDateTime datetime = MythDate::fromString(me->ExtraData(3));
     if (!datetime.isValid())
     {
         pixmapOk = false;
@@ -605,7 +617,7 @@ bool PreviewGenerator::LocalPreviewRun(void)
     int   width, height, sz;
     long long captime = captureTime;
 
-    QDateTime dt = QDateTime::currentDateTime();
+    QDateTime dt = MythDate::current();
 
     if (captime > 0)
         LOG(VB_GENERAL, LOG_INFO, "Preview from time spec");
@@ -803,7 +815,7 @@ char *PreviewGenerator::GetScreenGrab(
     ctx->SetRingBuffer(rbuf);
     ctx->SetPlayingInfo(&pginfo);
     ctx->SetPlayer(new MythPlayer((PlayerFlags)(kAudioMuted | kVideoIsNull)));
-    ctx->player->SetPlayerInfo(NULL, NULL, true, ctx);
+    ctx->player->SetPlayerInfo(NULL, NULL, ctx);
 
     if (time_in_secs)
         retbuf = ctx->player->GetScreenGrab(seektime, bufferlen,

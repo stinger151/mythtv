@@ -45,7 +45,7 @@ ProfileGroup::ProfileGroup()
     addChild(is_default = new Is_default(*this));
 
     ConfigurationGroup* profile = new VerticalConfigurationGroup(false);
-    profile->setLabel(QObject::tr("ProfileGroup"));
+    profile->setLabel(tr("ProfileGroup"));
     profile->addChild(name = new Name(*this));
     CardInfo *cardInfo = new CardInfo(*this);
     profile->addChild(cardInfo);
@@ -101,7 +101,7 @@ void ProfileGroup::fillSelections(SelectSetting* setting)
     }
 
     if (!tid.isEmpty())
-        setting->addSelection(QObject::tr("Transcoders"), tid);
+        setting->addSelection(tr("Transcoders"), tid);
 }
 
 QString ProfileGroup::getName(int group)
@@ -111,9 +111,8 @@ QString ProfileGroup::getName(int group)
                             .arg(group);
     result.prepare(querystr);
 
-    if (result.exec() && result.isActive() && result.size() > 0)
+    if (result.exec() && result.next())
     {
-        result.next();
         return result.value(0).toString();
     }
 
@@ -128,7 +127,7 @@ bool ProfileGroup::allowedGroupName(void)
                             .arg(getName()).arg(host->getValue());
     result.prepare(querystr);
 
-    if (result.exec() && result.isActive() && result.size() > 0)
+    if (result.exec() && result.next())
         return false;
     return true;
 }
@@ -167,7 +166,7 @@ void ProfileGroupEditor::open(int id) {
     }
     else
     {
-        pgName = QString(QObject::tr("New Profile Group Name"));
+        pgName = tr("New Profile Group Name");
         profilegroup->setName(pgName);
         newgroup = true;
     }
@@ -235,7 +234,7 @@ void ProfileGroupEditor::Load(void)
 {
     listbox->clearSelections();
     ProfileGroup::fillSelections(listbox);
-    listbox->addSelection(QObject::tr("(Create new profile group)"), "0");
+    listbox->addSelection(tr("(Create new profile group)"), "0");
 }
 
 DialogCode ProfileGroupEditor::exec(void)
@@ -285,17 +284,16 @@ void ProfileGroupEditor::callDelete(void)
                             "id = %1 AND is_default = 0;").arg(id);
     result.prepare(querystr);
 
-    if (result.exec() && result.isActive() && result.size() > 0)
+    if (result.exec() && result.next())
     {
-        result.next();
-        QString message = QObject::tr("Delete profile group:") +
-                          QString("\n'%1'?").arg(ProfileGroup::getName(id));
+        QString message = tr("Delete profile group:\n'%1'?")
+                              .arg(ProfileGroup::getName(id));
 
         DialogCode value = MythPopupBox::Show2ButtonPopup(
             GetMythMainWindow(),
             "", message,
-            QObject::tr("Yes, delete group"),
-            QObject::tr("No, Don't delete group"), kDialogCodeButton1);
+            tr("Yes, delete group"),
+            tr("No, Don't delete group"), kDialogCodeButton1);
 
         if (kDialogCodeButton0 == value)
         {

@@ -6,12 +6,13 @@
 #include <QRegExp>
 
 #include "mythcorecontext.h"
+#include "mythmiscutil.h"
 #include "mythcontext.h"
 #include "mythdb.h"
 #include "storagegroup.h"
 #include "remotefile.h"
 #include "remoteutil.h"
-#include "mythmiscutil.h"
+#include "mythdate.h"
 #include "mythlogging.h"
 #include "globals.h"
 #include "dbaccess.h"
@@ -1014,19 +1015,26 @@ QString VideoMetadata::FilenameToMeta(const QString &file_name, int position)
     cleanFilename.replace(QRegExp("_"), " ");
     cleanFilename.replace(QRegExp("\\."), " ");
 
-    QString season_translation = QObject::tr("Season");
-    QString episode_translation = QObject::tr("Episode");
+    /*: Word(s) which should be recognized as "season" when parsing a video
+     * file name. To list more than one word, separate them with a '|'.
+     */
+    QString season_translation = tr("Season", "Metadata file name parsing");
+
+    /*: Word(s) which should be recognized as "episode" when parsing a video
+     * file name. To list more than one word, separate them with a '|'.
+     */
+    QString episode_translation = tr("Episode", "Metadata file name parsing");
 
     // Primary Regexp
     QString separator = "(?:\\s?(?:-|/)?\\s?)?";
     QString regexp = QString(
                   "^(.*[^s0-9])" // Title
                   "%1" // optional separator
-                  "(?:s|(?:%2))?" // season marker
+                  "(?:s|(?:Season|%2))?" // season marker
                   "%1" // optional separator
                   "(\\d{1,4})" // Season
                   "%1" // optional separator
-                  "(?:[ex/]|%3)" // episode marker
+                  "(?:[ex/]|Episode|%3)" // episode marker
                   "%1" // optional separator
                   "(\\d{1,3})" // Episode
                   "%1" // optional separator
@@ -1037,7 +1045,7 @@ QString VideoMetadata::FilenameToMeta(const QString &file_name, int position)
                   Qt::CaseInsensitive, QRegExp::RegExp2);
 
     // Cleanup Regexp
-    QString regexp2 = QString("(%1(?:%2%1\\d*%1)*%1)$")
+    QString regexp2 = QString("(%1(?:(?:Season|%2)%1\\d*%1)*%1)$")
                              .arg(separator).arg(season_translation);
     QRegExp title_parse(regexp2, Qt::CaseInsensitive, QRegExp::RegExp2);
 
@@ -1089,7 +1097,7 @@ namespace
 {
     const QRegExp &getTitleTrim(bool ignore_case)
     {
-        static QString pattern(QObject::tr("^(The |A |An )"));
+        static QString pattern(VideoMetadata::tr("^(The |A |An )"));
         static QRegExp prefixes_case(pattern, Qt::CaseSensitive);
         static QRegExp prefixes_nocase(pattern, Qt::CaseInsensitive);
         return ignore_case ? prefixes_nocase : prefixes_case;
@@ -1175,8 +1183,8 @@ void VideoMetadata::toMap(MetadataMap &metadataMap)
     metadataMap["playcount"] = QString::number(GetPlayCount());
     metadataMap["year"] = GetDisplayYear(GetYear());
 
-    metadataMap["releasedate"] = MythDateToString(GetReleaseDate(), kDateFull |
-                                                                    kAddYear);
+    metadataMap["releasedate"] = MythDate::toString(
+        GetReleaseDate(), MythDate::kDateFull | MythDate::kAddYear);
 
     metadataMap["userrating"] = GetDisplayUserRating(GetUserRating());
 
@@ -1199,8 +1207,8 @@ void VideoMetadata::toMap(MetadataMap &metadataMap)
 
     GetStateMap(metadataMap);
 
-    metadataMap["insertdate"] = MythDateToString(GetInsertdate(), kDateFull |
-                                                                  kAddYear);
+    metadataMap["insertdate"] = MythDate::toString(
+        GetInsertdate(), MythDate::kDateFull | MythDate::kAddYear);
     metadataMap["inetref"] = GetInetRef();
     metadataMap["homepage"] = GetHomepage();
     metadataMap["child_id"] = QString::number(GetChildID());

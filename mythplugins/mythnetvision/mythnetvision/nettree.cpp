@@ -4,6 +4,7 @@
 #include <QtAlgorithms>
 
 // myth
+#include <mythdate.h>
 #include <mythdb.h>
 #include <mythcontext.h>
 #include <mythdirs.h>
@@ -205,7 +206,7 @@ void NetTree::cleanCacheDir()
         LOG(VB_GENERAL, LOG_DEBUG, QString("Deleting file %1").arg(filename));
         QFileInfo fi(filename);
         QDateTime lastmod = fi.lastModified();
-        if (lastmod.addDays(7) < QDateTime::currentDateTime())
+        if (lastmod.addDays(7) < MythDate::current())
             QFile::remove(filename);
     }
 }
@@ -591,7 +592,7 @@ void NetTree::fillTree()
     // Add an upfolder
     if (m_type != DLG_TREE)
     {
-          m_rssGeneric->addNode(QString(tr("Back")), kUpFolder, true, false);
+          m_rssGeneric->addNode(tr("Back"), kUpFolder, true, false);
     }
 
     m_rssGeneric->SetData(QString("%1/mythnetvision/icons/rss.png")
@@ -610,7 +611,7 @@ void NetTree::fillTree()
         // Add an upfolder
         if (m_type != DLG_TREE)
         {
-            ret->addNode(QString(tr("Back")), kUpFolder, true, false);
+            ret->addNode(tr("Back"), kUpFolder, true, false);
         }
 
         ResultItem::resultList::iterator it = items.begin();
@@ -648,7 +649,7 @@ void NetTree::fillTree()
         // Add an upfolder
         if (m_type != DLG_TREE)
         {
-            ret->addNode(QString(tr("Back")), kUpFolder, true, false);
+            ret->addNode(tr("Back"), kUpFolder, true, false);
         }
 
         for (QList<QPair<QString, QString> >::iterator i = paths.begin();
@@ -692,7 +693,7 @@ void NetTree::buildGenericTree(MythGenericTree *dst, QStringList paths,
     // Add an upfolder
     if (m_type != DLG_TREE)
     {
-          folder->addNode(QString(tr("Back")), kUpFolder, true, false);
+          folder->addNode(tr("Back"), kUpFolder, true, false);
     }
 
     if (paths.size())
@@ -753,10 +754,11 @@ void NetTree::streamWebVideo()
         return;
     }
 
-    GetMythMainWindow()->HandleMedia("Internal", item->GetMediaURL(),
-           item->GetDescription(), item->GetTitle(), item->GetSubtitle(), QString(),
-           item->GetSeason(), item->GetEpisode(), QString(), item->GetTime().toInt(),
-           item->GetDate().toString("yyyy"));
+    GetMythMainWindow()->HandleMedia(
+        "Internal", item->GetMediaURL(),
+        item->GetDescription(), item->GetTitle(), item->GetSubtitle(),
+        QString(), item->GetSeason(), item->GetEpisode(), QString(),
+        item->GetTime().toInt(), item->GetDate().toString("yyyy"));
 }
 
 void NetTree::showWebVideo()

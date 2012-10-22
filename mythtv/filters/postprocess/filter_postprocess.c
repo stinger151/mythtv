@@ -23,14 +23,14 @@ typedef struct ThisFilter
 {
     VideoFilter vf;
 
-    pp_mode_t* mode;
-    pp_context_t* context;
+    pp_mode *mode;
+    pp_context *context;
     int width;
     int height;
     int ysize;
     int csize;
-    unsigned char* src[3];
-    unsigned char* dst[3];
+    unsigned char *src[3];
+    unsigned char *dst[3];
     int srcStride[3];
     int dstStride[3];
     int eprint;
@@ -133,12 +133,12 @@ FmtConv FmtList[] =
     FMT_NULL
 };
 
-ConstFilterInfo filter_table[] =
+const FilterInfo filter_table[] =
 {
     {
         filter_init: &new_filter,
-        name:       "postprocess",
-        descript:   "FFMPEG's postprocessing filters",
+        name:       (char*)"postprocess",
+        descript:   (char*)"FFMPEG's postprocessing filters",
         formats:    FmtList,
         libname:    NULL
     },

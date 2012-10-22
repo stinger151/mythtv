@@ -1390,10 +1390,10 @@ int CardUtil::CreateCardInput(const uint cardid,
         return -1;
     }
 
-    uint inputid = -1;
+    int inputid = -1; /* must be int not uint because of return type. */
 
     if (query.next())
-        inputid = query.value(0).toUInt();
+        inputid = query.value(0).toInt();
 
     return inputid;
 }
@@ -1563,7 +1563,8 @@ bool CardUtil::UnlinkInputGroup(uint inputid, uint inputgroupid)
     {
         query.prepare(
             "DELETE FROM inputgroup "
-            "WHERE cardinputid = 0 ");
+            "WHERE cardinputid NOT IN "
+            "( SELECT cardinputid FROM cardinput )");
     }
     else
     {
@@ -2199,10 +2200,10 @@ int CardUtil::CreateCaptureCard(const QString &videodevice,
         return -1;
     }
 
-    uint cardid = -1;
+    int cardid = -1;  /* must be int not uint because of return type. */
 
     if (query.next())
-        cardid = query.value(0).toUInt();
+        cardid = query.value(0).toInt();
 
     return cardid;
 }

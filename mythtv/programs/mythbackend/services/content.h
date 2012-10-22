@@ -3,19 +3,23 @@
 // Created     : Mar. 7, 2011
 //
 // Copyright (c) 2011 David Blain <dblain@mythtv.org>
-//                                          
-// This library is free software; you can redistribute it and/or 
-// modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation; either
-// version 2.1 of the License, or at your option any later version of the LGPL.
 //
-// This library is distributed in the hope that it will be useful,
+// This program is free software; you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation; either version 2 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-// Lesser General Public License for more details.
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
 //
-// You should have received a copy of the GNU Lesser General Public
-// License along with this library.  If not, see <http://www.gnu.org/licenses/>.
+// You should have received a copy of the GNU General Public License
+// along with this program; if not, write to the Free Software
+// Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -115,6 +119,51 @@ class Content : public ContentServices
 
         DTC::LiveStreamInfo     *StopLiveStream         ( int Id );
         bool                     RemoveLiveStream       ( int Id );
+};
+
+// --------------------------------------------------------------------------
+// The following class wrapper is due to a limitation in Qt Script Engine.  It
+// requires all methods that return pointers to user classes that are derived from
+// QObject actually return QObject* (not the user class *).  If the user class pointer
+// is returned, the script engine treats it as a QVariant and doesn't create a
+// javascript prototype wrapper for it.
+//
+// This class allows us to keep the rich return types in the main API class while
+// offering the script engine a class it can work with.
+//
+// Only API Classes that return custom classes needs to implement these wrappers.
+//
+// We should continue to look for a cleaning solution to this problem.
+// --------------------------------------------------------------------------
+
+class ScriptableContent : public QObject
+{
+    Q_OBJECT
+
+    private:
+
+        Content  m_obj;
+
+    public:
+
+        Q_INVOKABLE ScriptableContent( QObject *parent = 0 ) : QObject( parent ) {}
+
+    public slots:
+
+        QObject* GetLiveStream(      int              Id )
+        {
+            return m_obj.GetLiveStream( Id );
+        }
+
+        QObject* GetLiveStreamList(  void )
+        {
+            return m_obj.GetLiveStreamList();
+        }
+
+        QObject* GetFilteredLiveStreamList(  const QString &FileName )
+        {
+            return m_obj.GetFilteredLiveStreamList( FileName );
+        }
 };
 
 Q_SCRIPT_DECLARE_QMETAOBJECT( Content, QObject*);

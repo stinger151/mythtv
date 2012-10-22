@@ -21,6 +21,7 @@ using namespace std;
 #include "recordingrule.h"
 #include "scheduledrecording.h"
 #include "mythmiscutil.h"
+#include "mythdate.h"
 #include "mythcorecontext.h"
 #include "dialogbox.h"
 #include "remoteutil.h"
@@ -109,6 +110,8 @@ RecordingInfo::RecordingInfo(
     oldrecstatus(_oldrecstatus),
     savedrecstatus(rsUnknown),
     future(_future),
+    desiredrecstartts(_startts),
+    desiredrecendts(_endts),
     record(NULL)
 {
     hostname = _hostname;
@@ -202,6 +205,8 @@ RecordingInfo::RecordingInfo(
     oldrecstatus(rsUnknown),
     savedrecstatus(rsUnknown),
     future(false),
+    desiredrecstartts(_startts),
+    desiredrecendts(_endts),
     record(NULL)
 {
     recpriority = _recpriority;
@@ -233,6 +238,8 @@ RecordingInfo::RecordingInfo(
     oldrecstatus(rsUnknown),
     savedrecstatus(rsUnknown),
     future(false),
+    desiredrecstartts(),
+    desiredrecendts(),
     record(NULL)
 {
     ProgramList schedList;
@@ -321,9 +328,11 @@ RecordingInfo::RecordingInfo(
     }
 
     // Round endtime up to the next half-hour.
-    endts.setTime(QTime(endts.time().hour(),
-                        endts.time().minute() / kUnknownProgramLength
-                        * kUnknownProgramLength));
+    endts = QDateTime(
+        endts.date(),
+        QTime(endts.time().hour(),
+              endts.time().minute() / kUnknownProgramLength
+              * kUnknownProgramLength), Qt::UTC);
     endts = endts.addSecs(kUnknownProgramLength * 60);
 
     // if under a minute, bump it up to the next half hour
@@ -351,6 +360,9 @@ RecordingInfo::RecordingInfo(
 
     if (status)
         *status = kFakedLiveTVProgram;
+
+    desiredrecstartts = startts;
+    desiredrecendts = endts;
 }
 
 /// \brief Copies important fields from other RecordingInfo.
@@ -376,6 +388,8 @@ void RecordingInfo::clone(const RecordingInfo &other,
         oldrecstatus   = other.oldrecstatus;
         savedrecstatus = other.savedrecstatus;
         future         = other.future;
+        desiredrecstartts = other.desiredrecstartts;
+        desiredrecendts = other.desiredrecendts;
     }
 }
 
@@ -400,6 +414,8 @@ void RecordingInfo::clone(const ProgramInfo &other,
     oldrecstatus   = rsUnknown;
     savedrecstatus = rsUnknown;
     future         = false;
+    desiredrecstartts = QDateTime();
+    desiredrecendts = QDateTime();
 }
 
 void RecordingInfo::clear(void)
@@ -412,6 +428,8 @@ void RecordingInfo::clear(void)
     oldrecstatus = rsUnknown;
     savedrecstatus = rsUnknown;
     future = false;
+    desiredrecstartts = QDateTime();
+    desiredrecendts = QDateTime();
 }
 
 
@@ -1167,8 +1185,8 @@ void RecordingInfo::AddHistory(bool resched, bool forcedup, bool future)
     RecStatusType rs = (GetRecordingStatus() == rsCurrentRecording &&
                         !future) ? rsPreviousRecording : GetRecordingStatus();
     LOG(VB_SCHEDULE, LOG_INFO, QString("AddHistory: %1/%2, %3, %4, %5/%6")
-            .arg(int(rs)).arg(int(oldrecstatus)).arg(future).arg(dup)
-            .arg(GetScheduledStartTime().toString()).arg(GetTitle()));
+        .arg(int(rs)).arg(int(oldrecstatus)).arg(future).arg(dup)
+        .arg(GetScheduledStartTime(MythDate::ISODate)).arg(GetTitle()));
     if (!future)
         oldrecstatus = GetRecordingStatus();
     if (dup)

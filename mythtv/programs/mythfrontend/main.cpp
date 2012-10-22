@@ -18,7 +18,10 @@ using namespace std;
 #include <QTimer>
 
 #include "previewgeneratorqueue.h"
+#include "referencecounter.h"
+#include "mythmiscutil.h"
 #include "mythconfig.h"
+#include "mythsystem.h"
 #include "tv.h"
 #include "proglist.h"
 #include "progfind.h"
@@ -38,10 +41,10 @@ using namespace std;
 #include "grabbersettings.h"
 #include "playgroup.h"
 #include "networkcontrol.h"
-#include "dvdringbuffer.h"
 #include "scheduledrecording.h"
 #include "mythsystemevent.h"
 #include "hardwareprofile.h"
+#include "signalhandling.h"
 
 #include "compat.h"  // For SIG* on MinGW
 #include "exitcodes.h"
@@ -85,14 +88,18 @@ using namespace std;
 #include "videometadatasettings.h"
 #include "videolist.h"
 
-#ifdef USING_RAOP
-#include "mythraopdevice.h"
+// DVD
+#include "DVD/dvdringbuffer.h"
+
+// AirPlay
+#ifdef USING_AIRPLAY
+#include "AirPlay/mythraopdevice.h"
+#include "AirPlay/mythairplayserver.h"
 #endif
 
 #ifdef USING_LIBDNS_SD
 #include <QScopedPointer>
 #include "bonjourregister.h"
-#include "mythairplayserver.h"
 #endif
 
 static ExitPrompter   *exitPopup = NULL;
@@ -104,6 +111,9 @@ static MythPluginManager *pmanager = NULL;
 
 static void handleExit(bool prompt);
 static void resetAllKeys(void);
+void handleSIGUSR1(void);
+void handleSIGUSR2(void);
+
 
 namespace
 {
@@ -225,11 +235,8 @@ namespace
 
     void cleanup()
     {
-#ifdef USING_RAOP
+#ifdef USING_AIRPLAY
         MythRAOPDevice::Cleanup();
-#endif
-
-#ifdef USING_LIBDNS_SD
         MythAirplayServer::Cleanup();
 #endif
 
@@ -257,11 +264,11 @@ namespace
         delete gContext;
         gContext = NULL;
 
+        ReferenceCounter::PrintDebug();
+
         delete qApp;
 
-#ifndef _MSC_VER
-        signal(SIGUSR1, SIG_DFL);
-#endif
+        SignalHandler::Done();
     }
 
     class CleanupGuard
@@ -654,8 +661,6 @@ static void jumpScreenVideoTree()    { RunVideoScreen(VideoDialog::DLG_TREE, tru
 static void jumpScreenVideoGallery() { RunVideoScreen(VideoDialog::DLG_GALLERY, true); }
 static void jumpScreenVideoDefault() { RunVideoScreen(VideoDialog::DLG_DEFAULT, true); }
 
-QString gDVDdevice;
-
 static void playDisc()
 {
     //
@@ -686,10 +691,7 @@ static void playDisc()
     }
     else
     {
-        QString dvd_device = gDVDdevice;
-
-        if (dvd_device.isEmpty())
-            dvd_device = MediaMonitor::defaultDVDdevice();
+        QString dvd_device = MediaMonitor::defaultDVDdevice();
 
         if (dvd_device.isEmpty())
             return;  // User cancelled in the Popup
@@ -751,39 +753,9 @@ static void handleDVDMedia(MythMediaDevice *dvd)
     if (!dvd)
         return;
 
-    QString newDevice = dvd->getDevicePath();
-
-    // Device insertion. Store it for later use
-    if (dvd->isUsable())
-        if (gDVDdevice.length() && gDVDdevice != newDevice)
-        {
-            // Multiple DVD devices. Clear the old one so the user has to
-            // select a disk to play (in MediaMonitor::defaultDVDdevice())
-
-            LOG(VB_MEDIA, LOG_INFO,
-                "MythVideo: Multiple DVD drives? Forgetting " + gDVDdevice);
-            gDVDdevice.clear();
-        }
-        else
-        {
-            gDVDdevice = newDevice;
-            LOG(VB_MEDIA, LOG_INFO,
-                "MythVideo: Storing DVD device " + gDVDdevice);
-        }
-    else
-    {
-        // Ejected/unmounted/error.
-
-        if (gDVDdevice.length() && gDVDdevice == newDevice)
-        {
-            LOG(VB_MEDIA, LOG_INFO,
-                "MythVideo: Forgetting existing DVD " + gDVDdevice);
-            gDVDdevice.clear();
-        }
-
+    if (!dvd->isUsable()) // This isn't infallible, on some drives both a mount and libudf fail
         return;
-    }
-
+    
     switch (gCoreContext->GetNumSetting("DVDOnInsertDVD", 1))
     {
         case 0 : // Do nothing
@@ -1226,7 +1198,11 @@ static bool resetTheme(QString themedir, const QString badtheme)
     MythTranslation::reload();
     gCoreContext->ReInitLocale();
     GetMythUI()->LoadQtConfig();
+#if CONFIG_DARWIN
+    GetMythMainWindow()->Init(OPENGL_PAINTER);
+#else
     GetMythMainWindow()->Init();
+#endif
 
     GetMythMainWindow()->ReinitDone();
 
@@ -1255,7 +1231,11 @@ static int reloadTheme(void)
     {
         menu->Close();
     }
+#if CONFIG_DARWIN
+    GetMythMainWindow()->Init(OPENGL_PAINTER);
+#else
     GetMythMainWindow()->Init();
+#endif
 
     GetMythMainWindow()->ReinitDone();
 
@@ -1440,22 +1420,6 @@ static void resetAllKeys(void)
     ReloadKeys();
 }
 
-
-static void signal_USR1_handler(int){
-      LOG(VB_GENERAL, LOG_NOTICE, "SIGUSR1 received, reloading theme");
-      gCoreContext->SendMessage("CLEAR_SETTINGS_CACHE");
-      gCoreContext->ActivateSettingsCache(false);
-      GetMythMainWindow()->JumpTo("Reload Theme");
-      gCoreContext->ActivateSettingsCache(true);
-}
-
-static void signal_USR2_handler(int)
-{
-    LOG(VB_GENERAL, LOG_NOTICE, "SIGUSR2 received, restart LIRC handler");
-    GetMythMainWindow()->StartLIRC();
-}
-
-
 static int internal_media_init()
 {
     REG_MEDIAPLAYER("Internal", QT_TRANSLATE_NOOP("MythControls",
@@ -1510,6 +1474,19 @@ int main(int argc, char **argv)
 #endif
     new QApplication(argc, argv);
     QCoreApplication::setApplicationName(MYTH_APPNAME_MYTHFRONTEND);
+
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    SignalHandler::SetHandler(SIGUSR1, handleSIGUSR1);
+    SignalHandler::SetHandler(SIGUSR2, handleSIGUSR2);
+    signal(SIGHUP, SIG_IGN);
+#endif
 
     int retval;
     if ((retval = cmdline.ConfigureLogging()) != GENERIC_EXIT_OK)
@@ -1597,13 +1574,17 @@ int main(int argc, char **argv)
         bonjour->Register(port, "_mythfrontend._tcp",
                                  name, dummy);
     }
-
-    if (getenv("MYTHTV_AIRPLAY"))
-        MythAirplayServer::Create();
 #endif
 
-#ifdef USING_RAOP
-    MythRAOPDevice::Create();
+#ifdef USING_AIRPLAY
+    if (gCoreContext->GetNumSetting("AirPlayEnabled", true))
+    {
+        MythRAOPDevice::Create();
+        if (!gCoreContext->GetNumSetting("AirPlayAudioOnly", false))
+        {
+            MythAirplayServer::Create();
+        }
+    }
 #endif
 
     LCD::SetupLCD();
@@ -1634,7 +1615,11 @@ int main(int argc, char **argv)
     }
 
     MythMainWindow *mainWindow = GetMythMainWindow();
+#if CONFIG_DARWIN
+    mainWindow->Init(OPENGL_PAINTER);
+#else
     mainWindow->Init();
+#endif
     mainWindow->setWindowTitle(QObject::tr("MythTV Frontend"));
 
     // We must reload the translation after a language change and this
@@ -1705,12 +1690,6 @@ int main(int argc, char **argv)
         return GENERIC_EXIT_NO_THEME;
     }
 
-#ifndef _MSC_VER
-    // Setup handler for USR1 signals to reload theme
-    signal(SIGUSR1, &signal_USR1_handler);
-    // Setup handler for USR2 signals to restart LIRC
-    signal(SIGUSR2, &signal_USR2_handler);
-#endif
     ThemeUpdateChecker *themeUpdateChecker = NULL;
     if (gCoreContext->GetNumSetting("ThemeUpdateNofications", 1))
         themeUpdateChecker = new ThemeUpdateChecker();
@@ -1777,6 +1756,21 @@ int main(int argc, char **argv)
 
     return ret;
 
+}
+
+void handleSIGUSR1(void)
+{
+    LOG(VB_GENERAL, LOG_INFO, "Reloading theme");
+    gCoreContext->SendMessage("CLEAR_SETTINGS_CACHE");
+    gCoreContext->ActivateSettingsCache(false);
+    GetMythMainWindow()->JumpTo("Reload Theme");
+    gCoreContext->ActivateSettingsCache(true);
+}
+
+void handleSIGUSR2(void)
+{
+    LOG(VB_GENERAL, LOG_INFO, "Restarting LIRC handler");
+    GetMythMainWindow()->StartLIRC();
 }
 
 #include "main.moc"

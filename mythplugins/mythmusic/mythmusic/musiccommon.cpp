@@ -27,7 +27,6 @@ using namespace std;
 // MythMusic includes
 #include "metadata.h"
 #include "constants.h"
-#include "streaminput.h"
 #include "decoder.h"
 #include "mainvisual.h"
 #include "smartplaylist.h"
@@ -39,6 +38,7 @@ using namespace std;
 #include "musiccommon.h"
 #include "playlistview.h"
 #include "playlisteditorview.h"
+#include "streamview.h"
 #include "visualizerview.h"
 #include "searchview.h"
 
@@ -77,21 +77,6 @@ MusicCommon::~MusicCommon(void)
         delete m_mainvisual;
         m_mainvisual = NULL;
     }
-
-#if 0
-    if (cd_reader_thread)
-    {
-        cd_watcher->stop();
-        cd_reader_thread->wait();
-        delete cd_reader_thread;
-    }
-
-    if (class LCD *lcd = LCD::Get())
-        lcd->switchToTime();
-
-    gMusicData->all_music->save();
-    gPlayer->refreshMetadata();
-#endif
 
     if (LCD *lcd = LCD::Get())
     {
@@ -172,7 +157,38 @@ bool MusicCommon::CreateCommon(void)
     gPlayer->addListener(this);
 
     if (!gPlayer->isPlaying())
+    {
+        bool isRadioView = (m_currentView == MV_RADIO);
+        if (isRadioView)
+            gPlayer->setPlayMode(MusicPlayer::PLAYMODE_RADIO);
+        else
+            gPlayer->setPlayMode(MusicPlayer::PLAYMODE_TRACKS);
+
         gPlayer->restorePosition();
+    }
+    else
+    {
+        // if we are playing but we are switching to a view from a different playmode
+        // we need to restart playback in the new mode
+        if (m_currentView == MV_VISUALIZER || m_currentView == MV_MINIPLAYER)
+        {
+            // this view can be used in both play modes
+        }
+        else if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO && m_currentView != MV_RADIO)
+        {
+            //gPlayer->savePosition();
+            gPlayer->stop(true);
+            gPlayer->setPlayMode(MusicPlayer::PLAYMODE_TRACKS);
+            gPlayer->restorePosition();
+        }
+        else if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS && m_currentView == MV_RADIO)
+        {
+            //gPlayer->savePosition();
+            gPlayer->stop(true);
+            gPlayer->setPlayMode(MusicPlayer::PLAYMODE_RADIO);
+            gPlayer->restorePosition();
+        }
+    }
 
     m_currentTrack = gPlayer->getCurrentTrackPos();
 
@@ -287,9 +303,14 @@ void MusicCommon::updateRepeatMode(void)
                 break;
         }
     }
+
+    // need this to update the next track info
+    Metadata *curMeta = gPlayer->getCurrentMetadata();
+    if (curMeta)
+        updateTrackInfo(curMeta);
 }
 
-void MusicCommon::updateShuffleMode(void)
+void MusicCommon::updateShuffleMode(bool updateUIList)
 {
     if (m_shuffleState)
     {
@@ -326,6 +347,24 @@ void MusicCommon::updateShuffleMode(void)
                     lcd->setMusicShuffle(LCD::MUSIC_SHUFFLE_NONE);
                 break;
         }
+    }
+
+    if (updateUIList)
+    {
+        // store id of current track
+        int curTrackID = -1;
+        if (gPlayer->getCurrentMetadata())
+            curTrackID = gPlayer->getCurrentMetadata()->ID();
+
+        updateUIPlaylist();
+
+        if (!restorePosition(curTrackID))
+            playFirstTrack();
+
+        // need this to update the next track info
+        Metadata *curMeta = gPlayer->getCurrentMetadata();
+        if (curMeta)
+            updateTrackInfo(curMeta);
     }
 }
 
@@ -411,6 +450,18 @@ void MusicCommon::switchView(MusicView view)
         case MV_VISUALIZER:
         {
             VisualizerView *view = new VisualizerView(mainStack);
+
+            if (view->Create())
+                mainStack->AddScreen(view);
+            else
+                delete view;
+
+            break;
+        }
+
+        case MV_RADIO:
+        {
+            StreamView *view = new StreamView(mainStack);
 
             if (view->Create())
                 mainStack->AddScreen(view);
@@ -529,23 +580,33 @@ bool MusicCommon::keyPressEvent(QKeyEvent *e)
         }
         else if (action == "FFWD")
         {
-            if (m_ffButton)
-                m_ffButton->Push();
-            else
-                seekforward();
+            if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+            {
+                if (m_ffButton)
+                    m_ffButton->Push();
+                else
+                    seekforward();
+            }
         }
         else if (action == "RWND")
         {
-            if (m_rewButton)
-                m_rewButton->Push();
-            else
-                seekback();
+            if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+            {
+                if (m_rewButton)
+                    m_rewButton->Push();
+                else
+                    seekback();
+            }
         }
         else if (action == "PAUSE")
         {
-            // if we are playing or are paused PAUSE will toggle the pause state
-            if (gPlayer->isPlaying() || (gPlayer->getOutput() && gPlayer->getOutput()->IsPaused()))
+            if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO && gPlayer->isPlaying())
             {
+                // ignore if we are already playing a radio stream
+            }
+            else if (gPlayer->isPlaying() || (gPlayer->getOutput() && gPlayer->getOutput()->IsPaused()))
+            {
+                // if we are playing or are paused PAUSE will toggle the pause state
                 if (m_pauseButton)
                     m_pauseButton->Push();
                 else
@@ -667,6 +728,28 @@ bool MusicCommon::keyPressEvent(QKeyEvent *e)
                     m_movingTracksState->DisplayState((m_moveTrackMode ? "on" : "off"));
             }
         }
+        else if (action == "SWITCHTOPLAYLIST" && m_currentView != MV_PLAYLIST)
+            switchView(MV_PLAYLIST);
+        else if (action == "SWITCHTOPLAYLISTEDITORTREE" && m_currentView != MV_PLAYLISTEDITORTREE)
+            switchView(MV_PLAYLISTEDITORTREE);
+        else if (action == "SWITCHTOPLAYLISTEDITORGALLERY" && m_currentView != MV_PLAYLISTEDITORGALLERY)
+            switchView(MV_PLAYLISTEDITORGALLERY);
+        else if (action == "SWITCHTOSEARCH" && m_currentView != MV_SEARCH)
+            switchView(MV_SEARCH);
+        else if (action == "SWITCHTOVISUALISER" && m_currentView != MV_VISUALIZER)
+            switchView(MV_VISUALIZER);
+        else if (action == "SWITCHTORADIO" && m_currentView != MV_RADIO)
+            switchView(MV_RADIO);
+        else if (action == "TOGGLESHUFFLE")
+        {
+            gPlayer->toggleShuffleMode();
+            updateShuffleMode(true);
+        }
+        else if (action == "TOGGLEREPEAT")
+        {
+            gPlayer->toggleRepeatMode();
+            updateRepeatMode();
+        }
         else
             handled = false;
     }
@@ -688,7 +771,7 @@ void MusicCommon::changeVolume(bool up)
 
 void MusicCommon::changeSpeed(bool up)
 {
-    if (gPlayer->getOutput())
+    if (gPlayer->getOutput() && gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
     {
         if (up)
             gPlayer->incSpeed();
@@ -715,11 +798,33 @@ void MusicCommon::toggleUpmix()
 
 void MusicCommon::updateProgressBar()
 {
-    if (m_trackProgress)
+    if (!m_trackProgress)
+        return;
+
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO)
     {
+        // radio mode so show the buffer fill level since we don't know the track length
+        int available, maxSize;
+        gPlayer->getBufferStatus(&available, &maxSize);
+
+        if (m_infoText)
+        {
+            QString status = QString("%1%").arg((int)(100.0 / ((double)maxSize / (double)available)));
+            m_infoText->SetText(status);
+        }
+
+        if (m_trackProgress)
+        {
+            m_trackProgress->SetTotal(maxSize);
+            m_trackProgress->SetUsed(available);
+        }
+    }
+    else
+    {
+        // show the track played time
         int percentplayed = 1;
         if (m_maxTime)
-            percentplayed = (int)(((double)m_currentTime / (double)m_maxTime)*100);
+            percentplayed = (int)(((double)m_currentTime / (double)m_maxTime) * 100);
         m_trackProgress->SetTotal(100);
         m_trackProgress->SetUsed(percentplayed);
     }
@@ -743,40 +848,6 @@ void MusicCommon::showVolume(void)
 void MusicCommon::showSpeed(bool show)
 {
     (void) show;
-#if 0
-    if (speed_status)
-    {
-        if (volume_status && (volume_status->getOrder() != -1))
-        {
-            volume_status->SetOrder(-1);
-            volume_status->refresh();
-        }
-
-        if (show)
-        {
-            QString speed_text;
-            float playSpeed = gPlayer->getSpeed();
-            speed_text.sprintf("x%4.2f",playSpeed);
-            speed_status->SetText(speed_text);
-            speed_status->SetOrder(0);
-            speed_status->refresh();
-            volume_display_timer->setSingleShot(true);
-            volume_display_timer->start(2000);
-        }
-    }
-
-    if (LCD *lcd = LCD::Get())
-    {
-        QString speed_text;
-        float playSpeed = gPlayer->getSpeed();
-        speed_text.sprintf("x%4.2f", playSpeed);
-        speed_text = tr("Speed: ") + speed_text;
-        QList<LCDTextItem> textItems;
-        textItems.append(LCDTextItem(lcd->getLCDHeight() / 2, ALIGN_CENTERED,
-                                     speed_text, "Generic", false));
-        lcd->switchToGeneric(textItems);
-    }
-#endif
 }
 
 void MusicCommon::switchVisualizer(const QString &visual)
@@ -973,6 +1044,9 @@ void MusicCommon::seek(int pos)
 
 void MusicCommon::changeRating(bool increase)
 {
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO)
+        return;
+
     // Rationale here is that if you can't get visual feedback on ratings
     // adjustments, you probably should not be changing them
     // TODO: should check if the rating is visible in the playlist buttontlist
@@ -1065,13 +1139,22 @@ void MusicCommon::customEvent(QEvent *event)
             return;
 
         int rs;
-        m_currentTime = rs = oe->elapsedSeconds();
+        Metadata *curMeta = gPlayer->getCurrentMetadata();
+
+        if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO)
+        {
+            if (curMeta)
+                m_currentTime = rs = curMeta->Length() / 1000;
+            else
+                m_currentTime = 0;
+        }
+        else
+            m_currentTime = rs = oe->elapsedSeconds();
 
         QString time_string = getTimeString(rs, m_maxTime);
 
         updateProgressBar();
 
-        Metadata *curMeta = gPlayer->getCurrentMetadata();
         if (curMeta)
         {
             if (LCD *lcd = LCD::Get())
@@ -1105,7 +1188,7 @@ void MusicCommon::customEvent(QEvent *event)
                                 oe->channels() > 1 ? "2" : "1");
         }
 
-        if (curMeta )
+        if (curMeta)
         {
             if (m_timeText)
                 m_timeText->SetText(time_string);
@@ -1127,7 +1210,7 @@ void MusicCommon::customEvent(QEvent *event)
 
         LOG(VB_GENERAL, LOG_ERR, QString("%1 %2").arg(statusString)
             .arg(*aoe->errorMessage()));
-        ShowOkPopup(QString(tr("MythMusic has encountered the following error:\n%1"))
+        ShowOkPopup(tr("MythMusic has encountered the following error:\n%1")
                     .arg(*aoe->errorMessage()));
         stopAll();
     }
@@ -1169,8 +1252,24 @@ void MusicCommon::customEvent(QEvent *event)
         LOG(VB_GENERAL, LOG_ERR, QString("%1 %2").arg(statusString)
             .arg(*dxe->errorMessage()));
 
-        ShowOkPopup(QString(tr("MythMusic has encountered the following error:\n%1"))
+        ShowOkPopup(tr("MythMusic has encountered the following error:\n%1")
                     .arg(*dxe->errorMessage()));
+    }
+    else if (event->type() == DecoderHandlerEvent::Error)
+    {
+        stopAll();
+
+        statusString = tr("Decoder Handler error.");
+
+        DecoderHandlerEvent *dhe = dynamic_cast<DecoderHandlerEvent*>(event);
+        if (!dhe)
+            return;
+
+        LOG(VB_GENERAL, LOG_ERR, QString("Decoder Handler Error - %1")
+                .arg(*dhe->getMessage()));
+
+        ShowOkPopup(QString("MythMusic has encountered the following error:\n%1")
+                .arg(*dhe->getMessage()));
     }
     else if (event->type() == DialogCompletionEvent::kEventType)
     {
@@ -1284,22 +1383,7 @@ void MusicCommon::customEvent(QEvent *event)
         {
             int mode = dce->GetData().toInt();
             gPlayer->setShuffleMode((MusicPlayer::ShuffleMode) mode);
-            updateShuffleMode();
-
-            // store id of current track
-            int curTrackID = -1;
-            if (gPlayer->getCurrentMetadata())
-                curTrackID = gPlayer->getCurrentMetadata()->ID();
-
-            updateUIPlaylist();
-
-            if (!restorePosition(curTrackID))
-                playFirstTrack();
-
-            // need this to update the next track info
-            Metadata *curMeta = gPlayer->getCurrentMetadata();
-            if (curMeta)
-                updateTrackInfo(curMeta);
+            updateShuffleMode(true);
         }
         else if (resultid == "exitmenu")
         {
@@ -1555,6 +1639,7 @@ void MusicCommon::customEvent(QEvent *event)
             {
                 MythUIButtonListItem *item = m_currentPlaylist->GetItemAt(x);
                 Metadata *mdata = qVariantValue<Metadata*> (item->GetData());
+
                 if (mdata && mdata->ID() == trackID)
                 {
                     MetadataMap metadataMap;
@@ -1562,6 +1647,22 @@ void MusicCommon::customEvent(QEvent *event)
                     item->SetTextFromMap(metadataMap);
 
                     item->DisplayState(QString("%1").arg(mdata->Rating()), "ratingstate");
+                }
+            }
+        }
+
+        if (m_playedTracksList)
+        {
+            for (int x = 0; x < m_playedTracksList->GetCount(); x++)
+            {
+                MythUIButtonListItem *item = m_playedTracksList->GetItemAt(x);
+                Metadata *mdata = qVariantValue<Metadata*> (item->GetData());
+
+                if (mdata && mdata->ID() == trackID)
+                {
+                    MetadataMap metadataMap;
+                    mdata->toMap(metadataMap);
+                    item->SetTextFromMap(metadataMap);
                 }
             }
         }
@@ -1591,7 +1692,7 @@ void MusicCommon::customEvent(QEvent *event)
                 if (mdata && mdata->ID() == trackID)
                 {
                     // reload the albumart image if one has already been loaded for this track
-                    if (!item->GetImage().isEmpty())
+                    if (!item->GetImageFilename().isEmpty())
                     {
                         QString artFile = mdata->getAlbumArtFile();
                         if (artFile.isEmpty())
@@ -1686,7 +1787,10 @@ void MusicCommon::updateTrackInfo(Metadata *mdata)
         return;
     }
 
-    m_maxTime = mdata->Length() / 1000;
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_RADIO)
+        m_maxTime = 0;
+    else
+        m_maxTime = mdata->Length() / 1000;
 
     // get map for current track
     MetadataMap metadataMap;
@@ -1765,7 +1869,7 @@ void MusicCommon::playlistItemVisible(MythUIButtonListItem *item)
     Metadata *mdata = qVariantValue<Metadata*> (item->GetData());
     if (mdata)
     {
-        if (item->GetImage().isEmpty())
+        if (item->GetImageFilename().isEmpty())
         {
             QString artFile = mdata->getAlbumArtFile();
             if (artFile.isEmpty())
@@ -1835,10 +1939,9 @@ void MusicCommon::updateUIPlaylist(void)
                     item->SetFontState("normal");
                     item->DisplayState("stopped", "playstate");
                 }
-            }
 
-            if (gPlayer->getCurrentMetadata() && mdata->ID() == gPlayer->getCurrentMetadata()->ID())
                 m_currentPlaylist->SetItemCurrent(item);
+            }
         }
     }
 }
@@ -1850,28 +1953,22 @@ void MusicCommon::updateUIPlayedList(void)
 
     m_playedTracksList->Reset();
 
-    QList<Metadata> playedList = gPlayer->getPlayedTracksList();
+    QList<Metadata*> playedList = gPlayer->getPlayedTracksList();
 
     for (int x = playedList.count(); x > 0; x--)
     {
-        Metadata *mdata = &playedList[x-1];
+        Metadata *mdata = playedList[x-1];
         MythUIButtonListItem *item =
-            new MythUIButtonListItem(m_playedTracksList, "");
+            new MythUIButtonListItem(m_playedTracksList, "", qVariantFromValue(mdata));
 
         MetadataMap metadataMap;
         mdata->toMap(metadataMap);
         item->SetTextFromMap(metadataMap);
 
-        if (x == playedList.count() && gPlayer->isPlaying())
-        {
-            item->SetFontState("playing");
-            item->DisplayState("playing", "playstate");
-        }
-        else
-        {
-            item->SetFontState("normal");
-            item->DisplayState("default", "playstate");
-        }
+        item->SetFontState("normal");
+        item->DisplayState("default", "playstate");
+
+        item->SetImage(mdata->getAlbumArtFile());
     }
 }
 
@@ -1885,8 +1982,8 @@ void MusicCommon::updatePlaylistStats(void)
         QString playlistcurrent = QLocale::system().toString(m_currentTrack + 1);
         QString playlisttotal = QLocale::system().toString(trackCount);
 
-        map["playlistposition"] = QString(tr("%1 of %2")).arg(playlistcurrent)
-                                                     .arg(playlisttotal);
+        map["playlistposition"] = tr("%1 of %2").arg(playlistcurrent)
+                                                .arg(playlisttotal);
         map["playlistcurrent"] = playlistcurrent;
         map["playlistcount"] = playlisttotal;
         map["playlisttime"] = getTimeString(m_playlistPlayedTime + m_currentTime, m_playlistMaxTime);
@@ -1943,8 +2040,6 @@ QString MusicCommon::getTimeString(int exTime, int maxTime)
     return time_string;
 }
 
-
-
 void MusicCommon::searchButtonList(void)
 {
     MythUIButtonList *buttonList = dynamic_cast<MythUIButtonList *>(GetFocusWidget());
@@ -1981,11 +2076,18 @@ MythMenu* MusicCommon::createMainMenu(void)
         menu->AddItem(tr("Search List..."));
 
     menu->AddItem(tr("Switch View"),      NULL, createViewMenu());
-    menu->AddItem(tr("Playlist Options"), NULL, createPlaylistMenu());
-    menu->AddItem(tr("Set Shuffle Mode"), NULL, createShuffleMenu());
-    menu->AddItem(tr("Set Repeat Mode"),  NULL, createRepeatMenu());
+
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+    {
+        menu->AddItem(tr("Playlist Options"), NULL, createPlaylistMenu());
+        menu->AddItem(tr("Set Shuffle Mode"), NULL, createShuffleMenu());
+        menu->AddItem(tr("Set Repeat Mode"),  NULL, createRepeatMenu());
+    }
+
     menu->AddItem(tr("Player Options"),   NULL, createPlayerMenu());
-    menu->AddItem(tr("Quick Playlists"),  NULL, createQuickPlaylistsMenu());
+
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+        menu->AddItem(tr("Quick Playlists"),  NULL, createQuickPlaylistsMenu());
 
     if (m_visualizerVideo)
         menu->AddItem(tr("Change Visualizer"), NULL, createVisualizerMenu());
@@ -2007,6 +2109,8 @@ MythMenu* MusicCommon::createViewMenu(void)
         menu->AddItem(tr("Playlist Editor - Gallery"), qVariantFromValue((int)MV_PLAYLISTEDITORGALLERY));
     if (m_currentView != MV_SEARCH)
         menu->AddItem(tr("Search for Music"), qVariantFromValue((int)MV_SEARCH));
+    if (m_currentView != MV_RADIO)
+        menu->AddItem(tr("Play Radio Stream"), qVariantFromValue((int)MV_RADIO));
     if (m_currentView != MV_VISUALIZER)
         menu->AddItem(tr("Fullscreen Visualizer"), qVariantFromValue((int)MV_VISUALIZER));
 
@@ -2075,11 +2179,18 @@ MythMenu* MusicCommon::createPlayerMenu(void)
     menu->AddItem(tr("Mute"));
     menu->AddItem(tr("Previous Track"));
     menu->AddItem(tr("Next Track"));
-    menu->AddItem(tr("Jump Back"));
-    menu->AddItem(tr("Jump Forward"));
+
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+    {
+        menu->AddItem(tr("Jump Back"));
+        menu->AddItem(tr("Jump Forward"));
+    }
+
     menu->AddItem(tr("Play"));
     menu->AddItem(tr("Stop"));
-    menu->AddItem(tr("Pause"));
+
+    if (gPlayer->getPlayMode() == MusicPlayer::PLAYMODE_TRACKS)
+        menu->AddItem(tr("Pause"));
 
     return menu;
 }

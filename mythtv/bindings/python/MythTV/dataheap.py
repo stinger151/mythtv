@@ -4,33 +4,56 @@
 Provides data access classes for accessing and managing MythTV data
 """
 
-from static import *
-from exceptions import *
-from altdict import DictData, DictInvertCI
-from database import *
-from system import Grabber, InternetMetadata, VideoMetadata
-from mythproto import ftopen, FileOps, Program
-from utility import CMPRecord, CMPVideo, MARKUPLIST, datetime, ParseSet
+from MythTV.static import *
+from MythTV.exceptions import *
+from MythTV.altdict import DictData, DictInvertCI
+from MythTV.database import *
+from MythTV.system import Grabber, InternetMetadata, VideoMetadata
+from MythTV.mythproto import ftopen, FileOps, Program
+from MythTV.utility import CMPRecord, CMPVideo, MARKUPLIST, datetime, ParseSet
 
 import re
 import locale
 import xml.etree.cElementTree as etree
 from datetime import date, time
 
-class Artwork( unicode ):
+from UserString import MutableString
+class Artwork( MutableString ):
     _types = {'coverart':   'Coverart',
               'coverfile':  'Coverart',
               'fanart':     'Fanart',
               'banner':     'Banners',
               'screenshot': 'ScreenShots',
               'trailer':    'Trailers'}
-    def __new__(self, attr, parent=None, imagetype=None):
-        s = u''
-        if parent and (parent[attr] is not None):
-            s = parent[attr]
-        return super(Artwork, self).__new__(self, s)
+
+    @property
+    def data(self):
+        try:
+            return self.parent[self.attr]
+        except:
+            raise RuntimeError("Artwork property must be used through an " +\
+                               "object, not independently.")
+    @data.setter
+    def data(self, value):
+        try:
+            self.parent[self.attr] = value
+        except:
+            raise RuntimeError("Artwork property must be used through an " +\
+                               "object, not independently.")
+    @data.deleter
+    def data(self):
+        try:
+            self.parent[self.attr] = self.parent._defaults.get(self.attr, "")
+        except:
+            raise RuntimeError("Artwork property must be used through an " +\
+                               "object, not independently.")
 
     def __init__(self, attr, parent=None, imagetype=None):
+        # replace standard MutableString init to not overwrite self.data
+        from warnings import warnpy3k
+        warnpy3k('the class UserString.MutableString has been removed in '
+                    'Python 3.0', stacklevel=2)
+
         self.attr = attr
         if imagetype is None:
             imagetype = self._types[attr]
@@ -39,10 +62,9 @@ class Artwork( unicode ):
 
         if parent:
             self.hostname = parent.get('hostname', parent.get('host', None))
-        super(Artwork, self).__init__()
 
     def __repr__(self):
-        return u"<{0.imagetype} '{0}'>".format(self)
+        return u"<{0.imagetype} '{0.data}'>".format(self)
 
     def __get__(self, inst, owner):
         if inst is None:
@@ -50,13 +72,15 @@ class Artwork( unicode ):
         return Artwork(self.attr, inst, self.imagetype)
 
     def __set__(self, inst, value):
-        super(Artwork, self).__set__(inst, value)
-        self.parent[self.attr] = value
+        inst[self.attr] = value
+
+    def __delete__(self, inst):
+        inst[self.attr] = inst._defaults.get(self.attr, "")
 
     @property
     def exists(self):
         be = FileOps(self.hostname, db = self.parent._db)
-        return be.fileExists(self, self.imagetype)
+        return be.fileExists(unicode(self), self.imagetype)
 
     def downloadFrom(self, url):
         if self.parent is None:
@@ -379,7 +403,7 @@ class Recorded( CMPRecord, DBDataWrite ):
 
         # pull direct matches
         for tag in ('title', 'subtitle', 'description', 'season', 'episode',
-                    'chanid', 'starttime', 'seriesid', 'programid', 'inetref',
+                    'chanid', 'seriesid', 'programid', 'inetref',
                     'recgroup', 'playgroup', 'seriesid', 'programid',
                     'storagegroup'):
             if metadata[tag] and _allow_change(self, tag, overwrite):
@@ -419,7 +443,7 @@ class Recorded( CMPRecord, DBDataWrite ):
 
         # pull direct matches
         for tag in ('title', 'subtitle', 'description', 'season', 'episode',
-                    'chanid', 'starttime', 'seriesid', 'programid', 'inetref',
+                    'chanid', 'seriesid', 'programid', 'inetref',
                     'recgroup', 'playgroup', 'seriesid', 'programid',
                     'storagegroup'):
             if self[tag]:
@@ -437,12 +461,12 @@ class Recorded( CMPRecord, DBDataWrite ):
             name = member.name
             role = ' '.join([word.capitalize() for word in member.role.split('_')])
             if role=='Writer': role = 'Author'
-            metadata.people.append({'name':name, 'job':role})
+            metadata.people.append(OrdDict((('name',name), ('job',role))))
 
-        for arttype in ['coverart', 'fanart', 'banner']:
-            art = getattr(self.artwork, arttype)
-            if art:
-                metadata.images.append({'type':arttype, 'filename':art})
+#        for arttype in ['coverart', 'fanart', 'banner']:
+#            art = getattr(self.artwork, arttype)
+#            if art:
+#                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
 
         return metadata
 
@@ -612,6 +636,7 @@ class Job( DBDataWrite, JOBTYPE, JOBCMD, JOBFLAG, JOBSTATUS ):
     def fromRecorded(cls, rec, type, status=None, schedruntime=None,
                                hostname=None, args=None, flags=None):
         job = cls(db=rec._db)
+        job.type = type
         job.chanid = rec.chanid
         job.starttime = rec.starttime
         if status:
@@ -632,6 +657,7 @@ class Job( DBDataWrite, JOBTYPE, JOBCMD, JOBFLAG, JOBSTATUS ):
         if prog.rectype != prog.rsRecorded:
             raise MythError('Invalid recording type for Job.')
         job = cls(db=prog._db)
+        job.type = type
         job.chanid = prog.chanid
         job.starttime = prog.recstartts
         if status:
@@ -961,7 +987,8 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
 
         # pull direct tags
         for tag in ('title', 'subtitle', 'tagline', 'season', 'episode',
-                    'inetref', 'homepage', 'trailer', 'userrating', 'year'):
+                    'inetref', 'homepage', 'trailer', 'userrating', 'year',
+                    'releasedate'):
             if metadata[tag] and _allow_change(self, tag, overwrite):
                 self[tag] = metadata[tag]
 
@@ -991,7 +1018,8 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
             for image in metadata.images:
                 if not hasattr(self, image.type):
                     continue
-                if getattr(self, image.type) and not overwrite:
+                current = getattr(self, image.type)
+                if current and (current != 'No Cover') and not overwrite:
                     continue
                 setattr(self, image.type, image.filename)
                 getattr(self, image.type).downloadFrom(image.url)
@@ -1008,7 +1036,8 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
 
         # pull direct tags
         for tag in ('title', 'subtitle', 'tagline', 'season', 'episode',
-                    'inetref', 'homepage', 'trailer', 'userrating', 'year'):
+                    'inetref', 'homepage', 'trailer', 'userrating', 'year',
+                    'releasedate'):
             if self[tag]:
                 metadata[tag] = self[tag]
 
@@ -1019,11 +1048,11 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
 
         # pull director
         if self.director:
-            metadata.people.append({'name':self.director, 'job':'Director'})
+            metadata.people.append(OrdDict((('name',self.director), ('job','Director'))))
 
         # pull actors
         for actor in self.cast:
-            metadata.people.append({'name':actor.cast, 'job':'Actor'})
+            metadata.people.append(OrdDict((('name',actor.cast), ('job','Actor'))))
 
         # pull genres
         for genre in self.genre:
@@ -1034,10 +1063,10 @@ class Video( CMPVideo, VideoSchema, DBDataWrite ):
             metadata.countries.append(country.country)
 
         # pull images
-        for arttype in ['coverart', 'fanart', 'banner', 'screenshot']:
-            art = getattr(self, arttype)
-            if art:
-                metadata.images.append({'type':arttype, 'filename':art})
+#        for arttype in ['coverart', 'fanart', 'banner', 'screenshot']:
+#            art = getattr(self, arttype)
+#            if art:
+#                metadata.images.append(OrdDict((('type',arttype), ('filename',art))))
 
         return metadata
 

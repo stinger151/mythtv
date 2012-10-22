@@ -38,7 +38,9 @@
 #include "mythconfig.h"
 #include "mythdirs.h"
 #include "mythuihelper.h"
-
+#ifdef USING_AIRPLAY
+#include "AirPlay/mythraopconnection.h"
+#endif
 #if defined(Q_OS_MACX)
 #include "privatedecoder_vda.h"
 #endif
@@ -161,16 +163,6 @@ static HostCheckBox *SmartForward()
     return gc;
 }
 
-static HostCheckBox *ExactSeeking()
-{
-    HostCheckBox *gc = new HostCheckBox("ExactSeeking");
-    gc->setLabel(QObject::tr("Seek to exact frame"));
-    gc->setValue(false);
-    gc->setHelpText(QObject::tr("If enabled, seeking is frame exact, but "
-                    "slower."));
-    return gc;
-}
-
 static GlobalComboBox *CommercialSkipMethod()
 {
     GlobalComboBox *bc = new GlobalComboBox("CommercialSkipMethod");
@@ -210,51 +202,6 @@ static HostComboBox *AutoCommercialSkip()
     return gc;
 }
 
-static GlobalCheckBox *AutoMetadataLookup()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoMetadataLookup");
-    bc->setLabel(QObject::tr("Run metadata lookup"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic metadata lookup setting when a new "
-                    "scheduled recording is created."));
-    return bc;
-}
-
-static GlobalCheckBox *AutoCommercialFlag()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoCommercialFlag");
-    bc->setLabel(QObject::tr("Run commercial detection"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic commercial detection setting when a new "
-                    "scheduled recording is created."));
-    return bc;
-}
-
-static GlobalCheckBox *AutoTranscode()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoTranscode");
-    bc->setLabel(QObject::tr("Run transcoder"));
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "automatic-transcode setting when a new scheduled "
-                    "recording is created."));
-    return bc;
-}
-
-static GlobalComboBox *DefaultTranscoder()
-{
-    GlobalComboBox *bc = new GlobalComboBox("DefaultTranscoder");
-    bc->setLabel(QObject::tr("Default transcoder"));
-    RecordingProfile::fillSelections(bc, RecordingProfile::TranscoderGroup,
-                                     true);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "transcoder setting when a new scheduled "
-                    "recording is created."));
-    return bc;
-}
-
 static GlobalSpinBox *DeferAutoTranscodeDays()
 {
     GlobalSpinBox *gs = new GlobalSpinBox("DeferAutoTranscodeDays", 0, 365, 1);
@@ -264,22 +211,6 @@ static GlobalSpinBox *DeferAutoTranscodeDays()
                     "completes instead of immediately afterwards."));
     gs->setValue(0);
     return gs;
-}
-
-static GlobalCheckBox *AutoRunUserJob(uint job_num)
-{
-    QString dbStr = QString("AutoRunUserJob%1").arg(job_num);
-    QString label = QObject::tr("Run user job #%1")
-        .arg(job_num);
-    GlobalCheckBox *bc = new GlobalCheckBox(dbStr);
-    bc->setLabel(label);
-    bc->setValue(false);
-    bc->setHelpText(QObject::tr("This is the default value used for the "
-                    "'Run %1' setting when a new scheduled "
-                    "recording is created.")
-                    .arg(gCoreContext->GetSetting(QString("UserJobDesc%1")
-                         .arg(job_num))));
-    return bc;
 }
 
 static GlobalCheckBox *AggressiveCommDetect()
@@ -378,17 +309,6 @@ static GlobalSpinBox *DeletedMaxAge()
     return bs;
 };
 
-static GlobalCheckBox *DeletedFifoOrder()
-{
-    GlobalCheckBox *cb = new GlobalCheckBox("DeletedFifoOrder");
-    cb->setLabel(QObject::tr("Expire in deleted order"));
-    cb->setValue(false);
-    cb->setHelpText(QObject::tr(
-                    "If enabled, delete recordings in the order which they were "
-                    "originally deleted."));
-    return cb;
-};
-
 #if 0
 class DeletedExpireOptions : public TriggeredConfigurationGroup
 {
@@ -403,7 +323,6 @@ class DeletedExpireOptions : public TriggeredConfigurationGroup
 
              HorizontalConfigurationGroup* settings =
                  new HorizontalConfigurationGroup(false);
-             settings->addChild(DeletedFifoOrder());
              settings->addChild(DeletedMaxAge());
              addTarget("1", settings);
 
@@ -448,17 +367,6 @@ static GlobalSpinBox *AutoExpireDayPriority()
     bs->setValue(3);
     return bs;
 };
-
-static GlobalCheckBox *AutoExpireDefault()
-{
-    GlobalCheckBox *bc = new GlobalCheckBox("AutoExpireDefault");
-    bc->setLabel(QObject::tr("Auto-Expire default"));
-    bc->setValue(true);
-    bc->setHelpText(QObject::tr("If enabled, any new recording schedules "
-                    "will be marked as eligible for auto-expiration. "
-                    "Existing schedules will keep their current value."));
-    return bc;
-}
 
 static GlobalSpinBox *AutoExpireLiveTVMaxAge()
 {
@@ -818,7 +726,7 @@ void PlaybackProfileItemConfig::decoderChanged(const QString &dec)
     vidrend->clearSelections();
     for (it = renderers.begin(); it != renderers.end(); ++it)
     {
-        if (*it != "null")
+        if ((*it != "null") && (*it != "nullvaapi") && (*it != "nullvdpau"))
             vidrend->addSelection(*it, *it, (*it == prenderer));
     }
 
@@ -1395,33 +1303,6 @@ static HostComboBox MUNUSED *DecodeVBIFormat()
     return gc;
 }
 
-static HostSpinBox *OSDCC708TextZoomPercentage(void)
-{
-    HostSpinBox *gs = new HostSpinBox("OSDCC708TextZoom", 50, 200, 5);
-    gs->setLabel(QObject::tr("Subtitle text zoom percentage"));
-    gs->setValue(100);
-    gs->setHelpText(QObject::tr("Use this to enlarge or shrink text based subtitles."));
-
-    return gs;
-}
-
-static HostComboBox *SubtitleFont()
-{
-    HostComboBox *hcb = new HostComboBox("DefaultSubtitleFont");
-    QFontDatabase db;
-    QStringList fonts = db.families();
-    QStringList hide  = db.families(QFontDatabase::Symbol);
-
-    hcb->setLabel(QObject::tr("Subtitle Font"));
-    hcb->setHelpText(QObject::tr("The font to use for text based subtitles."));
-    foreach (QString font, fonts)
-    {
-        if (!hide.contains(font))
-            hcb->addSelection(font, font, font.toLower() == "freemono");
-    }
-    return hcb;
-}
-
 static HostComboBox *SubtitleCodec()
 {
     HostComboBox *gc = new HostComboBox("SubtitleCodec");
@@ -1485,18 +1366,6 @@ static HostSpinBox *YScanDisplacement()
     gs->setHelpText(QObject::tr("Adjust this to move the image vertically."));
     return gs;
 };
-
-static HostCheckBox *CCBackground()
-{
-    HostCheckBox *gc = new HostCheckBox("CCBackground");
-    gc->setLabel(QObject::tr("Black background for closed captioning"));
-    gc->setValue(false);
-    gc->setHelpText(QObject::tr(
-                        "If enabled, captions will be displayed "
-                        "over a black background "
-                        "for better contrast."));
-    return gc;
-}
 
 static HostCheckBox *DefaultCCMode()
 {
@@ -1778,19 +1647,11 @@ static HostLineEdit *SetupPinCode()
     ge->setHelpText(QObject::tr("This PIN is used to control access to the "
                     "setup menus. If you want to use this feature, then "
                     "setting the value to all numbers will make your life "
-                    "much easier. Set it to blank to disable."));
-    return ge;
-}
-
-static HostCheckBox *SetupPinCodeRequired()
-{
-    HostCheckBox *gc = new HostCheckBox("SetupPinCodeRequired");
-    gc->setLabel(QObject::tr("Require setup PIN") + "    ");
-    gc->setValue(false);
-    gc->setHelpText(QObject::tr("If enabled, you will not be able to return "
+                    "much easier. Set it to blank to disable."
+                    "If enabled, you will not be able to return "
                     "to this screen and reset the Setup PIN without first "
                     "entering the current PIN."));
-    return gc;
+    return ge;
 }
 
 static HostComboBox *XineramaScreen()
@@ -2174,7 +2035,7 @@ static HostComboBox *MythDateFormatCB()
     HostComboBox *gc = new HostComboBox("DateFormat");
     gc->setLabel(QObject::tr("Date format"));
 
-    QDate sampdate = QDate::currentDate();
+    QDate sampdate = MythDate::current().toLocalTime().date();
     QString sampleStr =
         QObject::tr("Samples are shown using today's date.");
 
@@ -2223,7 +2084,7 @@ static HostComboBox *MythShortDateFormat()
     HostComboBox *gc = new HostComboBox("ShortDateFormat");
     gc->setLabel(QObject::tr("Short date format"));
 
-    QDate sampdate = QDate::currentDate();
+    QDate sampdate = MythDate::current().toLocalTime().date();
     QString sampleStr =
         QObject::tr("Samples are shown using today's date.");
 
@@ -2288,13 +2149,13 @@ static HostComboBox *ThemePainter()
 {
     HostComboBox *gc = new HostComboBox("ThemePainter");
     gc->setLabel(QObject::tr("Paint engine"));
-    gc->addSelection(QObject::tr("Qt"), "qt");
-    gc->addSelection(QObject::tr("Auto"), "auto");
+    gc->addSelection(QObject::tr("Qt"), QT_PAINTER);
+    gc->addSelection(QObject::tr("Auto"), AUTO_PAINTER);
 #ifdef USING_OPENGL
-    gc->addSelection(QObject::tr("OpenGL"), "opengl");
+    gc->addSelection(QObject::tr("OpenGL"), OPENGL_PAINTER);
 #endif
 #ifdef USING_MINGW
-    gc->addSelection(QObject::tr("Direct3D"), "d3d9");
+    gc->addSelection(QObject::tr("Direct3D"), D3D9_PAINTER);
 #endif
     gc->setHelpText(QObject::tr("This selects what MythTV uses to draw. "
                     "Choosing 'Auto' is recommended, unless running on systems "
@@ -2437,36 +2298,6 @@ static GlobalComboBox *GRSchedOpenEnd()
     bc->addSelection(QObject::tr("Always"), "2");
     bc->setValue(0);
     return bc;
-}
-
-static GlobalSpinBox *GRDefaultStartOffset()
-{
-    GlobalSpinBox *bs = new GlobalSpinBox("DefaultStartOffset",
-                                          -10, 30, 5, true);
-    bs->setLabel(QObject::tr("Default 'Start Early' minutes for new "
-                             "recording rules"));
-    bs->setHelpText(QObject::tr("Set this to '0' unless you expect that the "
-                    "majority of your show times will not match your TV "
-                    "listings. This sets the initial start early or start "
-                    "late time when rules are created. These can then be "
-                    "adjusted per recording rule."));
-    bs->setValue(0);
-    return bs;
-}
-
-static GlobalSpinBox *GRDefaultEndOffset()
-{
-    GlobalSpinBox *bs = new GlobalSpinBox("DefaultEndOffset",
-                                          -10, 30, 5, true);
-    bs->setLabel(QObject::tr("Default 'End Late' minutes for new "
-                             "recording rules"));
-    bs->setHelpText(QObject::tr("Set this to '0' unless you expect that the "
-                    "majority of your show times will not match your TV "
-                    "listings. This sets the initial end late or end early "
-                    "time when rules are created. These can then be adjusted "
-                    "per recording rule."));
-    bs->setValue(0);
-    return bs;
 }
 
 static GlobalSpinBox *GRPrefInputRecPriority()
@@ -2761,6 +2592,85 @@ static HostLineEdit *UDPNotifyPort()
                     "from the \"mythutil\" program on this port."));
     return ge;
 }
+
+#ifdef USING_AIRPLAY
+// AirPlay Settings
+static HostCheckBox *AirPlayEnabled()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayEnabled");
+    gc->setLabel(QObject::tr("Enable AirPlay"));
+    gc->setHelpText(QObject::tr("AirPlay lets you wirelessly view content on "
+                                "your TV from your iPhone, iPad, iPod Touch, or "
+                                "iTunes on your computer."));
+    gc->setValue(true);
+    return gc;
+}
+
+static HostCheckBox *AirPlayAudioOnly()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayAudioOnly");
+    gc->setLabel(QObject::tr("Only support AirTunes (no video)"));
+    gc->setHelpText(QObject::tr("Only stream audio from your iPhone, iPad, "
+                                "iPod Touch, or iTunes on your computer"));
+    gc->setValue(false);
+    return gc;
+}
+
+static HostCheckBox *AirPlayPasswordEnabled()
+{
+    HostCheckBox *gc = new HostCheckBox("AirPlayPasswordEnabled");
+    gc->setLabel(QObject::tr("Require password"));
+    gc->setValue(false);
+    gc->setHelpText(QObject::tr("Require a password to use AirPlay. Your iPhone, "
+                                "iPad, iPod Touch, or iTunes on your computer "
+                                "will prompt you when required"));
+    return gc;
+}
+
+static HostLineEdit *AirPlayPassword()
+{
+    HostLineEdit *ge = new HostLineEdit("AirPlayPassword");
+    ge->setValue("0000");
+    ge->setHelpText(QObject::tr("Your iPhone, iPad, iPod Touch, or iTunes on "
+                                "your computer will prompt you for this password "
+                                "when required"));
+    return ge;
+}
+
+static HorizontalConfigurationGroup *AirPlayPasswordSettings()
+{
+    HorizontalConfigurationGroup *hc =
+        new HorizontalConfigurationGroup(false, false, false, false);
+    hc->addChild(AirPlayPasswordEnabled());
+    hc->addChild(AirPlayPassword());
+    return hc;
+}
+
+static TransLabelSetting *AirPlayInfo()
+{
+    TransLabelSetting *ts = new TransLabelSetting();
+    ts->setValue(QObject::tr("All AirPlay settings take effect when "
+                             "you restart MythFrontend."));
+    return ts;
+}
+
+static TransLabelSetting *AirPlayRSAInfo()
+{
+    TransLabelSetting *ts = new TransLabelSetting();
+    if (MythRAOPConnection::LoadKey() == NULL)
+    {
+        ts->setValue(QObject::tr("AirTunes RSA key couldn't be loaded. "
+                                 "Check http://www.mythtv.org/wiki/AirTunes/AirPlay. "
+                                 "Last Error: %1")
+                     .arg(MythRAOPConnection::RSALastError()));
+    }
+    else
+    {
+        ts->setValue(QObject::tr("AirTunes RSA key successfully loaded."));
+    }
+    return ts;
+}
+#endif
 
 static HostCheckBox *RealtimePriority()
 {
@@ -3345,7 +3255,6 @@ MainGeneralSettings::MainGeneralSettings()
     VerticalConfigurationGroup *pin =
         new VerticalConfigurationGroup(false, true, false, false);
     pin->setLabel(QObject::tr("Settings Access"));
-    pin->addChild(SetupPinCodeRequired());
     pin->addChild(SetupPinCode());
     addChild(pin);
 
@@ -3363,6 +3272,27 @@ MainGeneralSettings::MainGeneralSettings()
     media->addChild(mediaMon);
     addChild(media);
 
+    VerticalConfigurationGroup *remotecontrol =
+    new VerticalConfigurationGroup(false, true, false, false);
+    remotecontrol->setLabel(QObject::tr("Remote Control"));
+    remotecontrol->addChild(LircDaemonDevice());
+    remotecontrol->addChild(NetworkControlEnabled());
+    remotecontrol->addChild(NetworkControlPort());
+    remotecontrol->addChild(UDPNotifyPort());
+    addChild(remotecontrol);
+
+#ifdef USING_AIRPLAY
+    VerticalConfigurationGroup *airplay =
+    new VerticalConfigurationGroup(false, true, false, false);
+    airplay->setLabel(QObject::tr("AirPlay Settings"));
+    airplay->addChild(AirPlayEnabled());
+    airplay->addChild(AirPlayAudioOnly());
+    airplay->addChild(AirPlayPasswordSettings());
+    airplay->addChild(AirPlayInfo());
+    airplay->addChild(AirPlayRSAInfo());
+    addChild(airplay);
+#endif
+
     VerticalConfigurationGroup *shutdownSettings =
         new VerticalConfigurationGroup(true, true, false, false);
     shutdownSettings->setLabel(QObject::tr("Shutdown/Reboot Settings"));
@@ -3371,15 +3301,6 @@ MainGeneralSettings::MainGeneralSettings()
     shutdownSettings->addChild(HaltCommand());
     shutdownSettings->addChild(RebootCommand());
     addChild(shutdownSettings);
-
-    VerticalConfigurationGroup *remotecontrol =
-        new VerticalConfigurationGroup(false, true, false, false);
-    remotecontrol->setLabel(QObject::tr("Remote Control"));
-    remotecontrol->addChild(LircDaemonDevice());
-    remotecontrol->addChild(NetworkControlEnabled());
-    remotecontrol->addChild(NetworkControlPort());
-    remotecontrol->addChild(UDPNotifyPort());
-    addChild(remotecontrol);
 }
 
 PlaybackSettings::PlaybackSettings()
@@ -3484,7 +3405,6 @@ PlaybackSettings::PlaybackSettings()
     seek->addChild(SmartForward());
     seek->addChild(FFRewReposTime());
     seek->addChild(FFRewReverse());
-    seek->addChild(ExactSeeking());
     addChild(seek);
 
     VerticalConfigurationGroup* comms = new VerticalConfigurationGroup(false);
@@ -3530,10 +3450,7 @@ OSDSettings::OSDSettings()
     osd->addChild(EnableMHEG());
     osd->addChild(PersistentBrowseMode());
     osd->addChild(BrowseAllTuners());
-    osd->addChild(CCBackground());
     osd->addChild(DefaultCCMode());
-    osd->addChild(SubtitleFont());
-    osd->addChild(OSDCC708TextZoomPercentage());
     osd->addChild(SubtitleCodec());
     addChild(osd);
 
@@ -3564,7 +3481,6 @@ GeneralSettings::GeneralSettings()
 
     VerticalConfigurationGroup *expgrp0 =
         new VerticalConfigurationGroup(false, false, true, true);
-    expgrp0->addChild(AutoExpireDefault());
     expgrp0->addChild(RerecordWatched());
     expgrp0->addChild(AutoExpireWatchedPriority());
 
@@ -3581,7 +3497,6 @@ GeneralSettings::GeneralSettings()
 
     autoexp->addChild(expgrp);
 //    autoexp->addChild(new DeletedExpireOptions());
-    autoexp->addChild(DeletedFifoOrder());
     autoexp->addChild(DeletedMaxAge());
 
     addChild(autoexp);
@@ -3591,29 +3506,7 @@ GeneralSettings::GeneralSettings()
     jobs->addChild(CommercialSkipMethod());
     jobs->addChild(CommFlagFast());
     jobs->addChild(AggressiveCommDetect());
-    jobs->addChild(DefaultTranscoder());
     jobs->addChild(DeferAutoTranscodeDays());
-
-    VerticalConfigurationGroup* autogrp0 =
-        new VerticalConfigurationGroup(false, false, true, true);
-    autogrp0->addChild(AutoMetadataLookup());
-    autogrp0->addChild(AutoCommercialFlag());
-    autogrp0->addChild(AutoTranscode());
-
-    VerticalConfigurationGroup* autogrp1 =
-        new VerticalConfigurationGroup(false, false, true, true);
-    autogrp0->addChild(AutoRunUserJob(1));
-    autogrp1->addChild(AutoRunUserJob(2));
-    autogrp1->addChild(AutoRunUserJob(3));
-    autogrp1->addChild(AutoRunUserJob(4));
-
-    HorizontalConfigurationGroup *autogrp =
-        new HorizontalConfigurationGroup(true, true, false, true);
-    autogrp->setLabel(
-        QObject::tr("Default Job Queue Settings for New Scheduled Recordings"));
-    autogrp->addChild(autogrp0);
-    autogrp->addChild(autogrp1);
-    jobs->addChild(autogrp);
 
     addChild(jobs);
 
@@ -3649,8 +3542,6 @@ GeneralRecPrioritiesSettings::GeneralRecPrioritiesSettings()
 
     sched->addChild(GRSchedMoveHigher());
     sched->addChild(GRSchedOpenEnd());
-    sched->addChild(GRDefaultStartOffset());
-    sched->addChild(GRDefaultEndOffset());
     sched->addChild(GRPrefInputRecPriority());
     sched->addChild(GRHDTVRecPriority());
     sched->addChild(GRWSRecPriority());
@@ -3685,7 +3576,9 @@ AppearanceSettings::AppearanceSettings()
     VerticalConfigurationGroup* screen = new VerticalConfigurationGroup(false);
     screen->setLabel(QObject::tr("Theme") + " / " + QObject::tr("Screen Settings"));
 
+#if ! CONFIG_DARWIN
     screen->addChild(ThemePainter());
+#endif
     screen->addChild(MenuTheme());
 
     if (MythDisplay::GetNumberXineramaScreens() > 1)

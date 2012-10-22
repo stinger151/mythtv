@@ -22,6 +22,7 @@
 #include <QFileInfo>
 
 #include "mythlogging.h"
+#include "mythdate.h"
 #include "mthread.h"
 
 #ifdef USING_MINGW
@@ -261,7 +262,7 @@ MPEG2fixup::MPEG2fixup(const QString &inf, const QString &outf,
         }
         else
             status_update_time = 5;
-        statustime = QDateTime::currentDateTime();
+        statustime = MythDate::current();
         statustime = statustime.addSecs(status_update_time);
 
         const QFileInfo finfo(inf);
@@ -275,7 +276,7 @@ MPEG2fixup::~MPEG2fixup()
     mpeg2_close(img_decoder);
 
     if (inputFC)
-        av_close_input_file(inputFC);
+        avformat_close_input(&inputFC);
 
     MPEG2frame *tmpFrame;
 
@@ -572,9 +573,9 @@ void MPEG2fixup::InitReplex()
     for (FrameMap::Iterator it = aFrame.begin(); it != aFrame.end(); it++)
     {
         int i = aud_map[it.key()];
-        AVMetadataTag *metatag =
-            av_metadata_get(inputFC->streams[it.key()]->metadata,
-                            "language", NULL, 0);
+        AVDictionaryEntry *metatag =
+            av_dict_get(inputFC->streams[it.key()]->metadata,
+                        "language", NULL, 0);
         char *lang = metatag ? metatag->value : (char *)"";
         ring_init(&rx.extrbuf[i], memsize / 5);
         ring_init(&rx.index_extrbuf[i], INDEX_BUF);
@@ -738,7 +739,7 @@ bool MPEG2fixup::InitAV(QString inputfile, const char *type, int64_t offset)
 
     inputFC = NULL;
 
-    ret = av_open_input_file(&inputFC, ifname, fmt, 0, NULL);
+    ret = avformat_open_input(&inputFC, ifname, fmt, NULL);
     if (ret)
     {
         LOG(VB_GENERAL, LOG_ERR,
@@ -752,12 +753,12 @@ bool MPEG2fixup::InitAV(QString inputfile, const char *type, int64_t offset)
         av_seek_frame(inputFC, vid_id, offset, AVSEEK_FLAG_BYTE);
 
     // Getting stream information
-    ret = av_find_stream_info(inputFC);
+    ret = avformat_find_stream_info(inputFC, NULL);
     if (ret < 0)
     {
         LOG(VB_GENERAL, LOG_ERR,
             QString("Couldn't get stream info, error #%1").arg(ret));
-        av_close_input_file(inputFC);
+        avformat_close_input(&inputFC);
         inputFC = NULL;
         return false;
     }
@@ -770,12 +771,12 @@ bool MPEG2fixup::InitAV(QString inputfile, const char *type, int64_t offset)
     {
         switch (inputFC->streams[i]->codec->codec_type)
         {
-            case CODEC_TYPE_VIDEO:
+            case AVMEDIA_TYPE_VIDEO:
                 if (vid_id == -1)
                     vid_id = i;
                 break;
 
-            case CODEC_TYPE_AUDIO:
+            case AVMEDIA_TYPE_AUDIO:
                 if (inputFC->streams[i]->codec->channels == 0)
                 {
                     LOG(VB_GENERAL, LOG_ERR,
@@ -1062,7 +1063,7 @@ extern "C" {
 #include "helper.h"
 }
 
-int MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
+bool MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
 {
     const mpeg2_info_t *info;
     int outbuf_size;
@@ -1073,7 +1074,7 @@ int MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
 
     info = mpeg2_info(img_decoder);
     if (!info->display_fbuf)
-        return 1;
+        return true;
 
     outbuf_size = info->sequence->width * info->sequence->height * 2;
 
@@ -1115,15 +1116,10 @@ int MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
     {
         free(picture);
         LOG(VB_GENERAL, LOG_ERR, "Couldn't find MPEG2 encoder");
-        return 1;
+        return true;
     }
 
-    c = avcodec_alloc_context();
-
-    //We disable all optimizations for the time being.  There shouldn't be too
-    //much encoding going on, and the optimizations have been shown to cause
-    //corruption in some cases
-    c->dsp_mask = 0xffff;
+    c = avcodec_alloc_context3(NULL);
 
     //NOTE: The following may seem wrong, but avcodec requires
     //sequence->progressive == frame->progressive
@@ -1155,25 +1151,37 @@ int MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
 
     picture->pts = AV_NOPTS_VALUE;
     picture->key_frame = 1;
-    picture->pict_type = 0;
+    picture->pict_type = AV_PICTURE_TYPE_NONE;
     picture->type = 0;
     picture->quality = 0;
 
-    if (avcodec_open(c, out_codec) < 0)
+    if (avcodec_open2(c, out_codec, NULL) < 0)
     {
         free(picture);
         LOG(VB_GENERAL, LOG_ERR, "could not open codec");
-        return 1;
+        return true;
     }
 
-    pkt->size = avcodec_encode_video(c, pkt->data, outbuf_size, picture);
+    int got_packet = 0;
+    int ret;
+    bool initial = true;
 
-    if (pkt->size <= 0)
+    // Need to call this repeatedly as it seems to be pipelined.  The first
+    // call will return no packet, then the second one will flush it.  In case
+    // it becomes more pipelined, just loop until it creates a packet or errors
+    // out.
+    while (!got_packet)
     {
-        free(picture);
-        LOG(VB_GENERAL, LOG_ERR,
-            QString("avcodec_encode_video failed (%1)").arg(pkt->size));
-        return 1;
+        ret = avcodec_encode_video2(c, pkt, (initial ? picture : NULL),
+                                             &got_packet);
+
+        if (ret < 0)
+        {
+            free(picture);
+            LOG(VB_GENERAL, LOG_ERR,
+                QString("avcodec_encode_video2 failed (%1)").arg(ret));
+            return true;
+        }
     }
 
     if (!fname.isEmpty())
@@ -1195,10 +1203,10 @@ int MPEG2fixup::BuildFrame(AVPacket *pkt, QString fname)
     av_freep(&c);
     av_freep(&picture);
 
-    return 0;
+    return false;
 }
 
-#define MAX_FRAMES 2000
+#define MAX_FRAMES 20000
 MPEG2frame *MPEG2fixup::GetPoolFrame(AVPacket *pkt)
 {
     MPEG2frame *f;
@@ -1268,12 +1276,16 @@ int MPEG2fixup::GetFrame(AVPacket *pkt)
                 {
                     LOG(VB_GENERAL, LOG_ERR,
                         "Found end of file without finding any frames");
+                    av_free_packet(pkt);
                     return 1;
                 }
 
                 MPEG2frame *tmpFrame = GetPoolFrame(&vFrame.last()->pkt);
                 if (tmpFrame == NULL)
+                {
+                    av_free_packet(pkt);
                     return 1;
+                }
 
                 vFrame.append(tmpFrame);
                 real_file_end = true;
@@ -1289,7 +1301,7 @@ int MPEG2fixup::GetFrame(AVPacket *pkt)
         }
         pkt->duration = framenum++;
         if ((showprogress || update_status) &&
-            QDateTime::currentDateTime() > statustime)
+            MythDate::current() > statustime)
         {
             float percent_done = 100.0 * pkt->pos / filesize;
             if (update_status)
@@ -1299,7 +1311,7 @@ int MPEG2fixup::GetFrame(AVPacket *pkt)
                         .arg(percent_done, 0, 'f', 1));
             if (check_abort && check_abort())
                 return REENCODE_STOPPED;
-            statustime = QDateTime::currentDateTime();
+            statustime = MythDate::current();
             statustime = statustime.addSecs(status_update_time);
         }
 
@@ -1313,11 +1325,14 @@ int MPEG2fixup::GetFrame(AVPacket *pkt)
 
         MPEG2frame *tmpFrame = GetPoolFrame(pkt);
         if (tmpFrame == NULL)
+        {
+            av_free_packet(pkt);
             return 1;
+        }
 
         switch (inputFC->streams[pkt->stream_index]->codec->codec_type)
         {
-            case CODEC_TYPE_VIDEO:
+            case AVMEDIA_TYPE_VIDEO:
                 vFrame.append(tmpFrame);
                 av_free_packet(pkt);
 
@@ -1326,7 +1341,7 @@ int MPEG2fixup::GetFrame(AVPacket *pkt)
                 framePool.enqueue(vFrame.takeLast());
                 break;
 
-            case CODEC_TYPE_AUDIO:
+            case AVMEDIA_TYPE_AUDIO:
                 aFrame[pkt->stream_index]->append(tmpFrame);
                 av_free_packet(pkt);
                 return 0;
@@ -1520,7 +1535,7 @@ MPEG2frame *MPEG2fixup::FindFrameNum(int frameNum)
 
 void MPEG2fixup::RenumberFrames(int start_pos, int delta)
 {
-    int maxPos = vFrame.count();
+    int maxPos = vFrame.count() - 1;
     
     for (int pos = start_pos; pos < maxPos; pos++)
     {
@@ -1652,7 +1667,11 @@ int MPEG2fixup::ConvertToI(FrameList *orderedFrames, int headPos)
     {
         int i = GetFrameNum((*it));
         if ((spare = DecodeToFrame(i, headPos == 0)) == NULL)
-            return 1;
+        {
+            LOG(VB_GENERAL, LOG_WARNING,
+                QString("ConvertToI skipping undecoded frame #%1").arg(i));
+            continue;
+        }
 
         if (GetFrameTypeT(spare) == 'I')
             continue;
@@ -1722,8 +1741,8 @@ int MPEG2fixup::InsertFrame(int frameNum, int64_t deltaPTS,
     
     inc2x33(&pkt.pts, ptsIncrement * GetNbFields(spare) / 2 + initPTS);
 
-    index = vFrame.indexOf(spare);
-    while (index < vFrame.count() - 1 &&
+    index = vFrame.indexOf(spare) + 1;
+    while (index < vFrame.count() &&
            GetFrameTypeT(vFrame.at(index)) == 'B')
         spare = vFrame.at(index++);
 
@@ -1748,7 +1767,8 @@ int MPEG2fixup::InsertFrame(int frameNum, int64_t deltaPTS,
 
     av_free(pkt.data);
 
-    // update frame # for all frames in this group
+    // update frame # for all later frames in this group
+    index++;
     RenumberFrames(index, increment);
 
     return increment;
@@ -2488,7 +2508,7 @@ int MPEG2fixup::Start()
     pthread_mutex_unlock( &rx.mutex );
     pthread_join(thread, NULL);
 
-    av_close_input_file(inputFC);
+    avformat_close_input(&inputFC);
     inputFC = NULL;
     return REENCODE_OK;
 }
@@ -2641,7 +2661,7 @@ int MPEG2fixup::BuildKeyframeIndex(QString &file,
     {
         if (pkt.stream_index == vid_id)
         {
-            if (pkt.flags & PKT_FLAG_KEY)
+            if (pkt.flags & AV_PKT_FLAG_KEY)
                 posMap[count] = pkt.pos;
             count++;
         }
@@ -2649,7 +2669,7 @@ int MPEG2fixup::BuildKeyframeIndex(QString &file,
     }
 
     // Close input file
-    av_close_input_file(inputFC);
+    avformat_close_input(&inputFC);
     inputFC = NULL;
 
     LOG(VB_GENERAL, LOG_NOTICE, "Transcode Completed");
