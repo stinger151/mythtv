@@ -13,6 +13,7 @@
 #include "mythconfig.h"
 #include "mythcontext.h"
 #include "mythdbcon.h"
+#include "dbutil.h"
 #include "mythlogging.h"
 #include "mythversion.h"
 #include "langsettings.h"
@@ -39,6 +40,7 @@
 #include "expertsettingseditor.h"
 #include "commandlineparser.h"
 #include "profilegroup.h"
+#include "signalhandling.h"
 
 using namespace std;
 
@@ -74,6 +76,8 @@ static void cleanup()
     gContext = NULL;
 
     delete qApp;
+
+    SignalHandler::Done();
 }
 
 static void SetupMenuCallback(void* data, QString& selection)
@@ -184,8 +188,11 @@ static bool resetTheme(QString themedir, const QString badtheme)
 
     MythTranslation::reload();
     GetMythUI()->LoadQtConfig();
+#if CONFIG_DARWIN
+    GetMythMainWindow()->Init(QT_PAINTER);
+#else
     GetMythMainWindow()->Init();
-
+#endif
     GetMythMainWindow()->ReinitDone();
 
     return RunMenu(themedir, themename);
@@ -209,7 +216,11 @@ static int reloadTheme(void)
     GetMythUI()->LoadQtConfig();
 
     menu->Close();
+#if CONFIG_DARWIN
+    GetMythMainWindow()->Init(QT_PAINTER);
+#else
     GetMythMainWindow()->Init();
+#endif
 
     GetMythMainWindow()->ReinitDone();
 
@@ -272,6 +283,17 @@ int main(int argc, char *argv[])
 #endif
     new QApplication(argc, argv, use_display);
     QCoreApplication::setApplicationName(MYTH_APPNAME_MYTHTV_SETUP);
+
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    signal(SIGHUP, SIG_IGN);
+#endif
 
     if (cmdline.toBool("display"))
         display = cmdline.toString("display");
@@ -348,7 +370,6 @@ int main(int argc, char *argv[])
 
     if (use_display)
     {
-        gCoreContext->SetSetting("Theme", DEFAULT_UI_THEME);
         GetMythUI()->LoadQtConfig();
 
         QString fileprefix = GetConfDir();
@@ -462,7 +483,8 @@ int main(int argc, char *argv[])
             printf("%5i %6i %8i %8s    %20s\n",
                    scans[i].scanid,   scans[i].cardid,
                    scans[i].sourceid, (scans[i].processed) ? "yes" : "no",
-                   scans[i].scandate.toString().toAscii().constData());
+                   scans[i].scandate.toString(Qt::ISODate)
+                   .toAscii().constData());
         }
         cout<<endl;
 
@@ -495,7 +517,11 @@ int main(int argc, char *argv[])
     }
 
     MythMainWindow *mainWindow = GetMythMainWindow();
+#if CONFIG_DARWIN
+    mainWindow->Init(QT_PAINTER);
+#else
     mainWindow->Init();
+#endif
     mainWindow->setWindowTitle(QObject::tr("MythTV Setup"));
 
     // We must reload the translation after a language change and this
@@ -505,6 +531,15 @@ int main(int argc, char *argv[])
     {
         if (!reloadTheme())
             return GENERIC_EXIT_NO_THEME;
+    }
+
+    if (!DBUtil::CheckTimeZoneSupport())
+    {
+        LOG(VB_GENERAL, LOG_ERR, 
+            "MySQL time zone support is missing.  "
+            "Please install it and try again.  "
+            "See 'mysql_tzinfo_to_sql' for assistance.");
+        return GENERIC_EXIT_DB_NOTIMEZONE;
     }
 
     if (!UpgradeTVDatabaseSchema(true))

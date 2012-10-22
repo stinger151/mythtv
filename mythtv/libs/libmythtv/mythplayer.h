@@ -114,6 +114,8 @@ class DecoderThread : public MThread
 
 class MTV_PUBLIC MythPlayer
 {
+    Q_DECLARE_TR_FUNCTIONS(MythPlayer)
+
     // Do NOT add a decoder class to this list
     friend class PlayerContext;
     friend class CC708Reader;
@@ -138,9 +140,7 @@ class MTV_PUBLIC MythPlayer
     bool InitVideo(void);
 
     // Public Sets
-    void SetPlayerInfo(TV *tv, QWidget *widget, bool frame_exact_seek,
-                       PlayerContext *ctx);
-    void SetExactSeeks(bool exact)            { exactseeks = exact; }
+    void SetPlayerInfo(TV *tv, QWidget *widget, PlayerContext *ctx);
     void SetLength(int len)                   { totalLength = len; }
     void SetFramesPlayed(uint64_t played);
     void SetVideoFilters(const QString &override);
@@ -279,6 +279,9 @@ class MTV_PUBLIC MythPlayer
     void TracksChanged(uint trackType);
     void EnableSubtitles(bool enable);
     void EnableForcedSubtitles(bool enable);
+    bool ForcedSubtitlesFavored(void) const {
+        return allowForcedSubtitles && !captionsEnabledbyDefault;
+    }
     // How to handle forced Subtitles (i.e. when in a movie someone speaks
     // in a different language than the rest of the movie, subtitles are
     // forced on even if the user doesn't have them turned on.)
@@ -289,6 +292,11 @@ class MTV_PUBLIC MythPlayer
     // Public MHEG/MHI stream selection
     bool SetAudioByComponentTag(int tag);
     bool SetVideoByComponentTag(int tag);
+    bool SetStream(const QString &);
+    long GetStreamPos(); // mS
+    long GetStreamMaxPos(); // mS
+    long SetStreamPos(long); // mS
+    void StreamPlay(bool play = true);
 
     // LiveTV public stuff
     void CheckTVChain();
@@ -339,6 +347,10 @@ class MTV_PUBLIC MythPlayer
 
     static const int kNightModeBrightenssAdjustment;
     static const int kNightModeContrastAdjustment;
+    static const double kInaccuracyNone;
+    static const double kInaccuracyDefault;
+    static const double kInaccuracyEditor;
+    static const double kInaccuracyFull;
 
     void SaveTotalFrames(void);
 
@@ -542,16 +554,13 @@ class MTV_PUBLIC MythPlayer
     // These actually execute commands requested by public members
     bool UpdateFFRewSkip(void);
     virtual void ChangeSpeed(void);
-    bool DoFastForward(uint64_t frames, bool override_seeks = false,
-                       bool seeks_wanted = false);
-    bool DoRewind(uint64_t frames, bool override_seeks = false,
-                  bool seeks_wanted = false);
-    void DoJumpToFrame(uint64_t frame, bool override_seeks = false,
-                       bool seeks_wanted = false);
+    // The "inaccuracy" argument is generally one of the kInaccuracy* values.
+    bool DoFastForward(uint64_t frames, double inaccuracy);
+    bool DoRewind(uint64_t frames, double inaccuracy);
+    void DoJumpToFrame(uint64_t frame, double inaccuracy);
 
     // Private seeking stuff
-    void WaitForSeek(uint64_t frame, bool override_seeks = false,
-                     bool seeks_wanted = false);
+    void WaitForSeek(uint64_t frame, uint64_t seeksnap_wanted);
     void ClearAfterSeek(bool clearvideobuffers = true);
 
     // Private chapter stuff
@@ -574,6 +583,7 @@ class MTV_PUBLIC MythPlayer
     // Private LiveTV stuff
     void  SwitchToProgram(void);
     void  JumpToProgram(void);
+    void  JumpToStream(const QString&);
 
   protected:
     PlayerFlags    playerFlags;
@@ -639,9 +649,6 @@ class MTV_PUBLIC MythPlayer
     /// If fftime>0, number of frames to seek forward.
     /// If fftime<0, number of frames to seek backward.
     long long fftime;
-    /// Iff true we ignore seek amount and try to seek to an
-    /// exact frame ignoring key frame restrictions.
-    bool     exactseeks;
 
     // Playback misc.
     /// How often we have tried to wait for a video output buffer and failed
@@ -710,6 +717,7 @@ class MTV_PUBLIC MythPlayer
     InteractiveTV *interactiveTV;
     bool       itvEnabled;
     QMutex     itvLock;
+    QString    m_newStream; // Guarded by itvLock
 
     // OSD stuff
     OSD  *osd;

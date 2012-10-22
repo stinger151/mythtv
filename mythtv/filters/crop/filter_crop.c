@@ -23,7 +23,7 @@
 #include "libavcodec/dsputil.h"
 
 #ifdef MMX
-#include "libavcodec/x86/mmx.h"
+#include "ffmpeg-mmx.h"
 #endif
 
 //static const char FILTER_NAME[] = "crop";
@@ -285,7 +285,7 @@ static VideoFilter *new_filter(VideoFrameType inpixfmt,
     filter->vf.filter  = &crop;
 
 #ifdef MMX
-    if (av_get_cpu_flags() & FF_MM_MMX)
+    if (av_get_cpu_flags() & AV_CPU_FLAG_MMX)
         filter->vf.filter = &cropMMX;
 #endif
 
@@ -300,12 +300,12 @@ static FmtConv FmtList[] =
     FMT_NULL
 };
 
-ConstFilterInfo filter_table[] = 
+const FilterInfo filter_table[] =
 {
     {
         filter_init: &new_filter,
-        name:       "crop",
-        descript:   "crops picture by macroblock intervals",
+        name:       (char*)"crop",
+        descript:   (char*)"crops picture by macroblock intervals",
         formats:    FmtList,
         libname:    NULL
     },

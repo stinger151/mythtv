@@ -16,27 +16,46 @@
 #include "mythuigroup.h"
 #include "mythlogging.h"
 
+class SemaphoreLocker
+{
+  public:
+    SemaphoreLocker(QSemaphore *lock) : m_lock(lock)
+    {
+        if (m_lock)
+            m_lock->acquire();
+    }
+    ~SemaphoreLocker()
+    {
+        if (m_lock)
+            m_lock->release();
+    }
+  private:
+    QSemaphore *m_lock;
+};
+
 QEvent::Type ScreenLoadCompletionEvent::kEventType =
     (QEvent::Type) QEvent::registerEventType();
 
 class ScreenLoadTask : public QRunnable
 {
   public:
-    ScreenLoadTask(MythScreenType *parent) : m_parent(parent) {}
+    ScreenLoadTask(MythScreenType &parent) : m_parent(parent) {}
 
   private:
-    void run()
+    void run(void)
     {
-        if (m_parent)
-            m_parent->LoadInForeground();
+        m_parent.Load();
+        m_parent.m_IsLoaded = true;
+        m_parent.m_IsLoading = false;
+        m_parent.m_LoadLock.release();
     }
 
-    MythScreenType *m_parent;
+    MythScreenType &m_parent;
 };
 
-MythScreenType::MythScreenType(MythScreenStack *parent, const QString &name,
-                               bool fullscreen)
-              : MythUIType(parent, name)
+MythScreenType::MythScreenType(
+    MythScreenStack *parent, const QString &name, bool fullscreen) :
+    MythUIType(parent, name), m_LoadLock(1)
 {
     m_FullScreen = fullscreen;
     m_CurrentFocusWidget = NULL;
@@ -51,13 +70,14 @@ MythScreenType::MythScreenType(MythScreenStack *parent, const QString &name,
     // Can be overridden, of course, but default to full sized.
     m_Area = GetMythMainWindow()->GetUIScreenRect();
 
-//    gCoreContext->SendSystemEvent(
-//        QString("SCREEN_TYPE CREATED %1").arg(name));
+    if (QCoreApplication::applicationName() == MYTH_APPNAME_MYTHFRONTEND)
+        gCoreContext->SendSystemEvent(
+            QString("SCREEN_TYPE CREATED %1").arg(name));
 }
 
-MythScreenType::MythScreenType(MythUIType *parent, const QString &name,
-                               bool fullscreen)
-              : MythUIType(parent, name)
+MythScreenType::MythScreenType(
+    MythUIType *parent, const QString &name, bool fullscreen) :
+    MythUIType(parent, name), m_LoadLock(1)
 {
     m_FullScreen = fullscreen;
     m_CurrentFocusWidget = NULL;
@@ -71,14 +91,19 @@ MythScreenType::MythScreenType(MythUIType *parent, const QString &name,
 
     m_Area = GetMythMainWindow()->GetUIScreenRect();
 
-//    gCoreContext->SendSystemEvent(
-//        QString("SCREEN_TYPE CREATED %1").arg(name));
+    if (QCoreApplication::applicationName() == MYTH_APPNAME_MYTHFRONTEND)
+        gCoreContext->SendSystemEvent(
+                QString("SCREEN_TYPE CREATED %1").arg(name));
 }
 
 MythScreenType::~MythScreenType()
 {
-//    gCoreContext->SendSystemEvent(
-//        QString("SCREEN_TYPE DESTROYED %1").arg(objectName()));
+    if (QCoreApplication::applicationName() == MYTH_APPNAME_MYTHFRONTEND)
+        gCoreContext->SendSystemEvent(
+                QString("SCREEN_TYPE DESTROYED %1").arg(objectName()));
+
+    // locking ensures background screen load can finish running
+    SemaphoreLocker locker(&m_LoadLock);
 
     m_CurrentFocusWidget = NULL;
     emit Exiting();
@@ -100,7 +125,7 @@ MythUIType *MythScreenType::GetFocusWidget(void) const
 }
 
 bool MythScreenType::SetFocusWidget(MythUIType *widget)
-{
+{ 
     if (!widget || !widget->IsVisible())
     {
         QMap<int, MythUIType *>::iterator it = m_FocusWidgetList.begin();
@@ -122,6 +147,9 @@ bool MythScreenType::SetFocusWidget(MythUIType *widget)
     if (!widget)
         return false;
 
+    if (m_CurrentFocusWidget == widget)
+        return true;
+    
     MythUIText *helpText = dynamic_cast<MythUIText *>(GetChild("helptext"));
     if (helpText)
         helpText->Reset();
@@ -291,18 +319,26 @@ void MythScreenType::Load(void)
 
 void MythScreenType::LoadInBackground(QString message)
 {
+    m_LoadLock.acquire();
+
     m_IsLoading = true;
+    m_IsLoaded = false;
+
     m_ScreenStack->AllowReInit();
 
     OpenBusyPopup(message);
 
-    ScreenLoadTask *loadTask = new ScreenLoadTask(this);
+    ScreenLoadTask *loadTask = new ScreenLoadTask(*this);
     MThreadPool::globalInstance()->start(loadTask, "ScreenLoad");
 }
 
 void MythScreenType::LoadInForeground(void)
 {
+    SemaphoreLocker locker(&m_LoadLock);
+
     m_IsLoading = true;
+    m_IsLoaded = false;
+
     m_ScreenStack->AllowReInit();
     Load();
     m_IsLoaded = true;
@@ -362,6 +398,8 @@ bool MythScreenType::IsInitialized(void) const
 
 void MythScreenType::doInit(void)
 {
+    SemaphoreLocker locker(&m_LoadLock); // don't run while loading..
+
     CloseBusyPopup();
     Init();
     m_IsInitialized = true;

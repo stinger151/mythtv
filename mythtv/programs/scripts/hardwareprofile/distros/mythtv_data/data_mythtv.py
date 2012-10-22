@@ -453,23 +453,39 @@ class _Mythtv_data:
 
         return myth_systemrole , mythremote
 
-
-
-
+    def ProcessLogUrgency(self):
+        c = _DB.cursor()
+        c.execute("""SELECT level,count(level) FROM logging GROUP BY level""")
+        levels = ('EMERG', 'ALERT', 'CRIT', 'ERR', 
+                  'WARNING', 'NOTICE', 'INFO') # ignore debugging from totals
+        counts = {}
+        total = 0.
+        for level,count in c.fetchall():
+            if level in range(len(levels)):
+                counts[levels[level]] = count
+                total += count
+        for k,v in counts.items():
+            counts[k] = v/total
+        return {'logurgency':counts}
 
     def get_data(self,gate):
         self._data = OrdDict()
-        self._data.update(self.ProcessVersion())
-        self._data.update(self.ProcessPrograms())
-        self._data.update(self.ProcessHistorical())
-        self._data.update(self.ProcessSource())
-        self._data.update(self.ProcessTimeZone())
-        self._data.update(self.ProcessStorage())
-        self._data.update(self.ProcessAudio())
-        self._data.update(self.ProcessVideoProfile())
-        self._data.update(self.ProcessMySQL())
-        self._data.update(self.ProcessScheduler())
-        self._data.update(self.Processtuners())
+        for func in (self.ProcessVersion,
+                     self.ProcessPrograms,
+                     self.ProcessHistorical,
+                     self.ProcessSource,
+                     self.ProcessTimeZone,
+                     self.ProcessStorage,
+                     self.ProcessAudio,
+                     self.ProcessVideoProfile,
+                     self.ProcessMySQL,
+                     self.ProcessScheduler,
+                     self.Processtuners,
+                     self.ProcessLogUrgency):
+            try:
+                self._data.update(func())
+            except:
+                pass
         
         self._data.theme          = _SETTINGS.Theme
         self._data.country          = _SETTINGS.Country

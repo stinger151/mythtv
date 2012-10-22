@@ -107,7 +107,7 @@ void WelcomeDialog::startFrontend(void)
     QString startFECmd = gCoreContext->GetSetting("MythWelcomeStartFECmd",
                          m_installDir + "/bin/mythfrontend");
 
-    myth_system(startFECmd);
+    myth_system(startFECmd, kMSDisableUDPListener);
     updateAll();
     m_frontendIsRunning = false;
 }
@@ -346,7 +346,7 @@ void WelcomeDialog::updateScreen(void)
     else
     {
         // update recording
-        if (m_isRecording && m_tunerList.size())
+        if (m_isRecording && !m_tunerList.empty())
         {
             if (m_screenTunerNo >= m_tunerList.size())
                 m_screenTunerNo = 0;
@@ -355,19 +355,20 @@ void WelcomeDialog::updateScreen(void)
 
             if (tuner.isRecording)
             {
-                status = QObject::tr("Tuner %1 is recording:\n")
-                    .arg(tuner.id);
+                status = tr("Tuner %1 is recording:").arg(tuner.id);
+                status += "\n";
                 status += tuner.channame;
                 status += "\n" + tuner.title;
                 if (!tuner.subtitle.isEmpty())
                     status += "\n("+tuner.subtitle+")";
-                status += "\n" + tuner.startTime.toString(m_timeFormat) +
-                          " " + tr("to") + " " + tuner.endTime.toString(m_timeFormat);
+                status += "\n" +
+                    tr("%1 to %2", "Time period, 'starttime to endtime'")
+                        .arg(MythDate::toString(tuner.startTime, MythDate::kTime))
+                        .arg(MythDate::toString(tuner.endTime, MythDate::kTime));
             }
             else
             {
-                status = QObject::tr("Tuner %1 is not recording")
-                    .arg(tuner.id);
+                status = tr("Tuner %1 is not recording").arg(tuner.id);
             }
 
             if (m_screenTunerNo < m_tunerList.size() - 1)
@@ -389,7 +390,7 @@ void WelcomeDialog::updateScreen(void)
                 m_screenScheduledNo = 0;
 
             ProgramInfo progInfo = m_scheduledList[m_screenScheduledNo];
-            
+
             InfoMap infomap;
             progInfo.ToMap(infomap);
 
@@ -515,7 +516,7 @@ void WelcomeDialog::updateStatusMessage(void)
 {
     m_statusList.clear();
 
-    QDateTime curtime = QDateTime::currentDateTime();
+    QDateTime curtime = MythDate::current();
 
     if (!m_isRecording && !m_nextRecordingStart.isNull() &&
         curtime.secsTo(m_nextRecordingStart) - m_preRollSeconds <
@@ -660,7 +661,7 @@ void WelcomeDialog::shutdownNow(void)
         return;
     }
 
-    QDateTime curtime = QDateTime::currentDateTime();
+    QDateTime curtime = MythDate::current();
 
     // don't shutdown if we are about to start recording
     if (!m_nextRecordingStart.isNull() &&
@@ -706,8 +707,8 @@ void WelcomeDialog::shutdownNow(void)
                                   time_ts.setNum(restarttime.toTime_t()));
         }
         else
-            setwakeup_cmd.replace("$time",
-                                  restarttime.toString(wakeup_timeformat));
+            setwakeup_cmd.replace(
+                "$time", restarttime.toLocalTime().toString(wakeup_timeformat));
 
         if (!setwakeup_cmd.isEmpty())
         {

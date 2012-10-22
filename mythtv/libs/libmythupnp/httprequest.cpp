@@ -39,6 +39,7 @@
 #include "compat.h"
 #include "mythlogging.h"
 #include "mythversion.h"
+#include "mythdate.h"
 
 #include "serializers/xmlSerializer.h"
 #include "serializers/soapSerializer.h"
@@ -62,6 +63,7 @@ static MIMETypes g_MIMETypes[] =
     { "qjs" , "application/javascript"     },
     { "txt" , "text/plain"                 },
     { "xml" , "text/xml"                   },
+    { "qxml", "text/xml"                   },
     { "xslt", "text/xml"                   },
     { "pdf" , "application/pdf"            },
     { "avi" , "video/avi"                  },
@@ -85,7 +87,10 @@ static MIMETypes g_MIMETypes[] =
     { "mov" , "video/quicktime"            },
     { "mp4" , "video/mp4"                  },
     // This formerly was video/x-matroska, but got changed due to #8643
-    { "mkv" , "video/x-mkv"                },
+    // This was reverted from video/x-mkv, due to #10980
+    // See http://matroska.org/technical/specs/notes.html#MIME
+    // If you can't please everyone, may as well be correct as you piss some off
+    { "mkv" , "video/x-matroska"           },
     { "mka" , "audio/x-matroska"           },
     { "wmv" , "video/x-ms-wmv"             },
     // Defined: http://wiki.xiph.org/index.php/MIME_Types_and_File_Extensions
@@ -174,7 +179,7 @@ QString HTTPRequest::BuildHeader( long long nSize )
                        "Date: %4\r\n"
                        "Server: %5, UPnP/1.0, MythTV %6\r\n" )
         .arg(m_nMajor).arg(m_nMinor).arg(GetResponseStatus())
-        .arg(QDateTime::currentDateTime().toString("d MMM yyyy hh:mm:ss"))
+        .arg(MythDate::current().toString("d MMM yyyy hh:mm:ss"))
         .arg(HttpServer::GetPlatform()).arg(MYTH_BINARY_VERSION);
 
     sHeader += GetAdditionalHeaders();

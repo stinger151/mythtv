@@ -520,7 +520,7 @@ bool NuppelVideoRecorder::SetupAVCodecVideo(void)
         return false;
     }
 
-    mpa_vidctx = avcodec_alloc_context();
+    mpa_vidctx = avcodec_alloc_context3(NULL);
 
     avcodec_get_frame_defaults(&mpa_picture);
 
@@ -577,8 +577,6 @@ bool NuppelVideoRecorder::SetupAVCodecVideo(void)
     mpa_vidctx->bit_rate_tolerance = usebitrate * 100;
     mpa_vidctx->qmin = maxquality;
     mpa_vidctx->qmax = minquality;
-    mpa_vidctx->mb_qmin = maxquality;
-    mpa_vidctx->mb_qmax = minquality;
     mpa_vidctx->max_qdiff = qualdiff;
     mpa_vidctx->flags = mp4opts;
     mpa_vidctx->mb_decision = mb_decision;
@@ -599,12 +597,12 @@ bool NuppelVideoRecorder::SetupAVCodecVideo(void)
     mpa_vidctx->idct_algo = FF_IDCT_AUTO;
     mpa_vidctx->prediction_method = FF_PRED_LEFT;
     if (videocodec.toLower() == "huffyuv" || videocodec.toLower() == "mjpeg")
-        mpa_vidctx->strict_std_compliance = FF_COMPLIANCE_INOFFICIAL;
+        mpa_vidctx->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
     mpa_vidctx->thread_count = encoding_thread_count;
 
     QMutexLocker locker(avcodeclock);
 
-    if (avcodec_open(mpa_vidctx, mpa_vidcodec) < 0)
+    if (avcodec_open2(mpa_vidctx, mpa_vidcodec, NULL) < 0)
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + QString("Unable to open FFMPEG/%1 codec")
                 .arg(videocodec));
@@ -2808,8 +2806,8 @@ void NuppelVideoRecorder::doWriteThread(void)
     }
 }
 
-void NuppelVideoRecorder::SetNextRecording(const ProgramInfo *progInf,
-                                           RingBuffer *rb)
+void NuppelVideoRecorder::SetNextRecording(
+    const RecordingInfo *progInf, RingBuffer *rb)
 {
     // First we do some of the time consuming stuff we can do now
     SavePositionMap(true);
@@ -2821,7 +2819,7 @@ void NuppelVideoRecorder::SetNextRecording(const ProgramInfo *progInf,
     QMutexLocker locker(&nextRingBufferLock);
     nextRecording = NULL;
     if (progInf)
-        nextRecording = new ProgramInfo(*progInf);
+        nextRecording = new RecordingInfo(*progInf);
     nextRingBuffer = rb;
 }
 
@@ -2952,21 +2950,30 @@ void NuppelVideoRecorder::WriteVideo(VideoFrame *frame, bool skipsync,
         mpa_picture.type = FF_BUFFER_TYPE_SHARED;
 
         if (wantkeyframe)
-            mpa_picture.pict_type = FF_I_TYPE;
+            mpa_picture.pict_type = AV_PICTURE_TYPE_I;
         else
-            mpa_picture.pict_type = 0;
+            mpa_picture.pict_type = AV_PICTURE_TYPE_NONE;
 
         if (!hardware_encode)
         {
+            AVPacket packet;
+            packet.data = (uint8_t *)strm;
+            packet.size = len;
+
+            int got_packet = 0;
+
             QMutexLocker locker(avcodeclock);
-            tmp = avcodec_encode_video(mpa_vidctx, (unsigned char *)strm,
-                                       len, &mpa_picture);
-            if (tmp == -1)
+            tmp = avcodec_encode_video2(mpa_vidctx, &packet, &mpa_picture,
+                                        &got_packet);
+
+            if (tmp < 0 || !got_packet)
             {
                 LOG(VB_GENERAL, LOG_ERR, LOC +
                     "WriteVideo : avcodec_encode_video() failed");
                 return;
             }
+
+            tmp = packet.size;
         }
     }
     else

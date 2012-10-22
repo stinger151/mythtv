@@ -14,7 +14,7 @@ using namespace std;
 #include "mythcontext.h"
 #include "mythdb.h"
 #include "mythversion.h"
-#include "mythmiscutil.h"
+#include "mythdate.h"
 #include "mythtranslation.h"
 
 #include "mythconfig.h"
@@ -22,11 +22,13 @@ using namespace std;
 // libmythtv headers
 #include "commandlineparser.h"
 #include "scheduledrecording.h"
+#include "mythmiscutil.h"
 #include "remoteutil.h"
 #include "videosource.h" // for is_grabber..
 #include "dbcheck.h"
 #include "mythsystemevent.h"
 #include "mythlogging.h"
+#include "signalhandling.h"
 
 // filldata headers
 #include "filldata.h"
@@ -36,7 +38,7 @@ namespace
     {
         delete gContext;
         gContext = NULL;
-
+        SignalHandler::Done();
     }
 
     class CleanupGuard
@@ -343,6 +345,17 @@ int main(int argc, char *argv[])
 
     CleanupGuard callCleanup(cleanup);
 
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    signal(SIGHUP, SIG_IGN);
+#endif
+
     gContext = new MythContext(MYTH_BINARY_VERSION);
     if (!gContext->Init(false))
     {
@@ -385,8 +398,7 @@ int main(int argc, char *argv[])
         {
             if (!query.isNull(0))
                 GuideDataBefore =
-                    QDateTime::fromString(query.value(0).toString(),
-                                          Qt::ISODate);
+                    MythDate::fromString(query.value(0).toString());
         }
 
         if (!fill_data.GrabDataFromFile(fromfile_id, fromfile_name))
@@ -405,8 +417,7 @@ int main(int argc, char *argv[])
         {
             if (!query.isNull(0))
                 GuideDataAfter =
-                    QDateTime::fromString(query.value(0).toString(),
-                                          Qt::ISODate);
+                    MythDate::fromString(query.value(0).toString());
         }
 
         if (GuideDataAfter == GuideDataBefore)
@@ -605,6 +616,27 @@ int main(int argc, char *argv[])
         }
 
         LOG(VB_GENERAL, LOG_INFO, QString("    Found %1").arg(found));
+    }
+
+    if (grab_data)
+    {
+        LOG(VB_GENERAL, LOG_INFO, "Fixing missing original airdates.");
+        MSqlQuery query(MSqlQuery::InitCon());
+
+        query.prepare("UPDATE program p "
+                      "JOIN ( "
+                      "  SELECT programid, MAX(originalairdate) maxoad "
+                      "  FROM program "
+                      "  WHERE programid <> '' AND "
+                      "        originalairdate IS NOT NULL "
+                      "  GROUP BY programid ) oad "
+                      "  ON p.programid = oad.programid "
+                      "SET p.originalairdate = oad.maxoad "
+                      "WHERE p.originalairdate IS NULL");
+
+        if (query.exec())
+            LOG(VB_GENERAL, LOG_INFO,
+                QString("    Found %1").arg(query.numRowsAffected()));
     }
 
     if (mark_repeats)

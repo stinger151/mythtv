@@ -13,6 +13,7 @@
 #include <QLocale>
 
 #include <cmath>
+#include <cstdarg>
 
 #include <queue>
 #include <algorithm>
@@ -39,6 +40,7 @@ using namespace std;
 #include "logging.h"
 #include "mthread.h"
 #include "serverpool.h"
+#include "mythdate.h"
 
 #define LOC      QString("MythCoreContext: ")
 
@@ -60,9 +62,9 @@ class MythCoreContextPrivate : public QObject
     QObject         *m_GUIobject;
     QString          m_appBinaryVersion;
 
-    QMutex  m_localHostLock;      ///< Locking for thread-safe copying of:
-    QString m_localHostname;     ///< hostname from mysql.txt or gethostname()
-    QMutex  m_masterHostLock;
+    QMutex  m_localHostLock;     ///< Locking for m_localHostname
+    QString m_localHostname;     ///< hostname from config.xml or gethostname()
+    QMutex  m_masterHostLock;    ///< Locking for m_masterHostname
     QString m_masterHostname;    ///< master backend hostname
 
     QMutex      m_sockLock;      ///< protects both m_serverSock and m_eventSock
@@ -85,6 +87,9 @@ class MythCoreContextPrivate : public QObject
     MythScheduler *m_scheduler;
 
     bool m_blockingClient;
+
+    QMap<QObject *, QByteArray> m_playbackClients;
+    QMutex m_playbackLock;
 };
 
 MythCoreContextPrivate::MythCoreContextPrivate(MythCoreContext *lparent,
@@ -106,8 +111,7 @@ MythCoreContextPrivate::MythCoreContextPrivate(MythCoreContext *lparent,
       m_blockingClient(false)
 {
     MThread::ThreadSetup("CoreContext");
-    srandom(QDateTime::currentDateTime().toTime_t() ^
-            QTime::currentTime().msec());
+    srandom(MythDate::current().toTime_t() ^ QTime::currentTime().msec());
 }
 
 MythCoreContextPrivate::~MythCoreContextPrivate()
@@ -118,12 +122,12 @@ MythCoreContextPrivate::~MythCoreContextPrivate()
     QMutexLocker locker(&m_sockLock);
     if (m_serverSock)
     {
-        m_serverSock->DownRef();
+        m_serverSock->DecrRef();
         m_serverSock = NULL;
     }
     if (m_eventSock)
     {
-        m_eventSock->DownRef();
+        m_eventSock->DecrRef();
         m_eventSock = NULL;
     }
 
@@ -322,7 +326,7 @@ bool MythCoreContext::ConnectToMasterServer(bool blockingClient,
 
     if (!IsBackend() && !d->m_eventSock)
     {
-        d->m_serverSock->DownRef();
+        d->m_serverSock->DecrRef();
         d->m_serverSock = NULL;
 
         QCoreApplication::postEvent(
@@ -386,7 +390,7 @@ MythSocket *MythCoreContext::ConnectCommandSocket(
                 if (p_proto_mismatch)
                     *p_proto_mismatch = true;
 
-                serverSock->DownRef();
+                serverSock->DecrRef();
                 serverSock = NULL;
                 break;
             }
@@ -412,7 +416,7 @@ MythSocket *MythCoreContext::ConnectCommandSocket(
             sleepms = WOLsleepTime * 1000;
         }
 
-        serverSock->DownRef();
+        serverSock->DecrRef();
         serverSock = NULL;
 
         if (!serverSock && (cnt == 1))
@@ -452,50 +456,59 @@ MythSocket *MythCoreContext::ConnectCommandSocket(
 MythSocket *MythCoreContext::ConnectEventSocket(const QString &hostname,
                                                 int port)
 {
-    MythSocket *m_eventSock = new MythSocket();
+    MythSocket *eventSock = new MythSocket();
 
-    while (m_eventSock->state() != MythSocket::Idle)
+    while (eventSock->state() != MythSocket::Idle)
     {
         usleep(5000);
     }
 
     // Assume that since we _just_ connected the command socket,
     // this one won't need multiple retries to work...
-    if (!m_eventSock->connect(hostname, port))
+    if (!eventSock->connect(hostname, port))
     {
         LOG(VB_GENERAL, LOG_ERR, LOC + "Failed to connect event "
                                        "socket to master backend");
-        m_eventSock->DownRef();
-        m_eventSock = NULL;
+        eventSock->DecrRef();
         return NULL;
     }
 
-    m_eventSock->Lock();
+    eventSock->Lock();
 
     QString str = QString("ANN Monitor %1 %2")
         .arg(d->m_localHostname).arg(true);
     QStringList strlist(str);
-    m_eventSock->writeStringList(strlist);
-    if (!m_eventSock->readStringList(strlist) || strlist.empty() ||
+    eventSock->writeStringList(strlist);
+    bool ok = true;
+    if (!eventSock->readStringList(strlist) || strlist.empty() ||
         (strlist[0] == "ERROR"))
     {
         if (!strlist.empty())
-            LOG(VB_GENERAL, LOG_ERR, LOC + "Problem connecting "
-                                           "event socket to master backend");
+        {
+            LOG(VB_GENERAL, LOG_ERR, LOC +
+                "Problem connecting event socket to master backend");
+        }
         else
-            LOG(VB_GENERAL, LOG_ERR, LOC + "Timeout connecting "
-                                           "event socket to master backend");
-
-        m_eventSock->DownRef();
-        m_eventSock->Unlock();
-        m_eventSock = NULL;
-        return NULL;
+        {
+            LOG(VB_GENERAL, LOG_ERR, LOC +
+                "Timeout connecting event socket to master backend");
+        }
+        ok = false;
     }
 
-    m_eventSock->Unlock();
-    m_eventSock->setCallbacks(this);
+    eventSock->Unlock();
 
-    return m_eventSock;
+    if (ok)
+    {
+        eventSock->setCallbacks(this);
+    }
+    else
+    {
+        eventSock->DecrRef();
+        eventSock = NULL;
+    }
+
+    return eventSock;
 }
 
 bool MythCoreContext::IsConnectedToMaster(void)
@@ -905,15 +918,15 @@ QString MythCoreContext::GetBackendServerIP(const QString &host)
         return addr6;
 }
 
-void MythCoreContext::SetSetting(const QString &key, const QString &newValue)
-{
-    d->m_database->SetSetting(key, newValue);
-}
-
 void MythCoreContext::OverrideSettingForSession(const QString &key,
                                                 const QString &value)
 {
     d->m_database->OverrideSettingForSession(key, value);
+}
+
+void MythCoreContext::ClearOverrideSettingForSession(const QString &key)
+{
+    d->m_database->ClearOverrideSettingForSession(key);
 }
 
 bool MythCoreContext::IsUIThread(void)
@@ -958,12 +971,12 @@ bool MythCoreContext::SendReceiveStringList(QStringList &strlist,
         {
             LOG(VB_GENERAL, LOG_NOTICE,
                 QString("Connection to backend server lost"));
-            d->m_serverSock->DownRef();
+            d->m_serverSock->DecrRef();
             d->m_serverSock = NULL;
 
             if (d->m_eventSock)
             {
-                d->m_eventSock->DownRef();
+                d->m_eventSock->DecrRef();
                 d->m_eventSock = NULL;
             }
 
@@ -995,7 +1008,7 @@ bool MythCoreContext::SendReceiveStringList(QStringList &strlist,
         {
             if (d->m_serverSock)
             {
-                d->m_serverSock->DownRef();
+                d->m_serverSock->DecrRef();
                 d->m_serverSock = NULL;
             }
 
@@ -1123,13 +1136,13 @@ void MythCoreContext::connectionClosed(MythSocket *sock)
     QMutexLocker locker(&d->m_sockLock);
     if (d->m_serverSock)
     {
-        d->m_serverSock->DownRef();
+        d->m_serverSock->DecrRef();
         d->m_serverSock = NULL;
     }
 
     if (d->m_eventSock)
     {
-        d->m_eventSock->DownRef();
+        d->m_eventSock->DecrRef();
         d->m_eventSock = NULL;
     }
 
@@ -1151,7 +1164,7 @@ bool MythCoreContext::CheckProtoVersion(MythSocket *socket, uint timeout_ms,
         LOG(VB_GENERAL, LOG_CRIT, "Protocol version check failure.\n\t\t\t"
                 "The response to MYTH_PROTO_VERSION was empty.\n\t\t\t"
                 "This happens when the backend is too busy to respond,\n\t\t\t"
-                "or has deadlocked in due to bugs or hardware failure.");
+                "or has deadlocked due to bugs or hardware failure.");
 
         return false;
     }
@@ -1318,6 +1331,105 @@ void MythCoreContext::SetScheduler(MythScheduler *sched)
 MythScheduler *MythCoreContext::GetScheduler(void)
 {
     return d->m_scheduler;
+}
+
+/**
+ * \fn void MythCoreContext::WaitUntilSignals(const char *signal1, ...)
+ * Wait until either of the provided signals have been received.
+ * signal1 being declared as SIGNAL(SignalName(args,..))
+ */
+void MythCoreContext::WaitUntilSignals(const char *signal1, ...)
+{
+    if (!signal1)
+        return;
+
+    const char *s;
+    QEventLoop eventLoop;
+    va_list vl;
+
+    LOG(VB_GENERAL, LOG_DEBUG, LOC +
+        QString("Waiting for signal %1")
+        .arg(signal1));
+    connect(this, signal1, &eventLoop, SLOT(quit()));
+
+    va_start(vl, signal1);
+    s = va_arg(vl, const char *);
+    while (s)
+    {
+        LOG(VB_GENERAL, LOG_DEBUG, LOC +
+            QString("Waiting for signal %1")
+            .arg(s));
+        connect(this, s, &eventLoop, SLOT(quit()));
+        s = va_arg(vl, const char *);
+    }
+    va_end(vl);
+
+    eventLoop.exec(QEventLoop::ExcludeUserInputEvents);
+}
+
+/**
+ * \fn void MythCoreContext::RegisterForPlayback(QObject *sender, const char *method)
+ * Register sender for TVPlaybackAboutToStart signal. Method will be called upon
+ * the signal being emitted.
+ * sender must call MythCoreContext::UnregisterForPlayback upon deletion
+ */
+void MythCoreContext::RegisterForPlayback(QObject *sender, const char *method)
+{
+    QMutexLocker lock(&d->m_playbackLock);
+
+    if (!d->m_playbackClients.contains(sender))
+    {
+        d->m_playbackClients.insert(sender, QByteArray(method));
+        connect(this, SIGNAL(TVPlaybackAboutToStart()),
+                sender, method,
+                Qt::BlockingQueuedConnection);
+    }
+}
+
+/**
+ * \fn void MythCoreContext::UnregisterForPlayback(QObject *sender)
+ * Unregister sender from being called when TVPlaybackAboutToStart signal
+ * is emitted
+ */
+void MythCoreContext::UnregisterForPlayback(QObject *sender)
+{
+    QMutexLocker lock(&d->m_playbackLock);
+
+    if (d->m_playbackClients.contains(sender))
+    {
+        QByteArray ba = d->m_playbackClients.value(sender);
+        const char *method = ba.constData();
+        disconnect(this, SIGNAL(TVPlaybackAboutToStart()),
+                   sender, method);
+        d->m_playbackClients.remove(sender);
+    }
+}
+
+/**
+ * All the objects that have registered using
+ * MythCoreContext::RegisterForPlayback
+ * but sender will be called. The object's registered method will be called
+ * in a blocking fashion, each of them being called one after the other
+ */
+void MythCoreContext::WantingPlayback(QObject *sender)
+{
+    QMutexLocker lock(&d->m_playbackLock);
+    QByteArray ba;
+    const char *method = NULL;
+
+    if (d->m_playbackClients.contains(sender))
+    {
+        ba = d->m_playbackClients.value(sender);
+        method = ba.constData();
+        disconnect(this, SIGNAL(TVPlaybackAboutToStart()), sender, method);
+    }
+    emit TVPlaybackAboutToStart();
+    if (method)
+    {
+        connect(this, SIGNAL(TVPlaybackAboutToStart()),
+                sender, method,
+                Qt::BlockingQueuedConnection);
+    }
 }
 
 /* vim: set expandtab tabstop=4 shiftwidth=4: */

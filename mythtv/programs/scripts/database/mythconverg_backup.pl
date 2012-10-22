@@ -13,7 +13,7 @@
 
 # Script info
     $NAME           = 'MythTV Database Backup Script';
-    $VERSION        = '1.0.10';
+    $VERSION        = '1.0.11';
 
 # Some variables we'll use here
     our ($username, $homedir, $mythconfdir, $database_information_file);
@@ -163,7 +163,7 @@ the script using command-line arguments or with a database information file.
 If a database information file is specified, all command-line arguments will be
 ignored. If no database information file is specified, the script will attempt
 to determine the appropriate configuration by using the MythTV configuration
-file(s) (prefering config.xml, but falling back to mysql.txt if no config.xml
+file(s) (preferring config.xml, but falling back to mysql.txt if no config.xml
 exists). Once the MythTV configuration file has been parsed, the backup
 resource file (see RESOURCE FILE, below) will be parsed, then command-line
 arguments will be applied (thus overriding any values determined from the
@@ -492,26 +492,26 @@ EOF
                 $var = $1; $val = $2;
             }
             next unless ($var && $var =~ m/\w/);
-            if ($var eq 'DBHostName')
+            if (($var eq 'Host') || ($var eq 'DBHostName'))
             {
                 $mysql_conf{'db_host'} = $val;
             }
-            elsif ($var eq 'DBPort')
+            elsif (($var eq 'Port') || ($var eq 'DBPort'))
             {
                 $mysql_conf{'db_port'} = $val;
             }
-            elsif ($var eq 'DBUserName')
+            elsif (($var eq 'UserName') || ($var eq 'DBUserName'))
             {
                 $mysql_conf{'db_user'} = $val;
             }
-            elsif ($var eq 'DBPassword')
+            elsif (($var eq 'Password') || ($var eq 'DBPassword'))
             {
                 $mysql_conf{'db_pass'} = $val;
                 $mysql_conf{'db_pass'} =~ s/&amp;/&/sg;
                 $mysql_conf{'db_pass'} =~ s/&gt;/>/sg;
                 $mysql_conf{'db_pass'} =~ s/&lt;/</sg;
             }
-            elsif ($var eq 'DBName')
+            elsif (($var eq 'DatabaseName') || ($var eq 'DBName'))
             {
                 $mysql_conf{'db_name'} = $val;
             }

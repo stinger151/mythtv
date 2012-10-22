@@ -194,7 +194,8 @@ bool DTVMultiplex::ParseDVB_T(
     if (!ok)
     {
         LOG(VB_GENERAL, LOG_WARNING, LOC +
-            "Invalid inversion, falling back to 'auto'.");
+            QString("Invalid inversion parameter '%1', falling back to 'auto'.")
+                .arg(_inversion));
         ok = true;
     }
 
@@ -220,7 +221,8 @@ bool DTVMultiplex::ParseDVB_S_and_C(
     if (!ok)
     {
         LOG(VB_GENERAL, LOG_WARNING, LOC +
-            "Invalid inversion, falling back to 'auto'");
+            QString("Invalid inversion parameter '%1', falling back to 'auto'.")
+                .arg(_inversion));
 
         ok = true;
     }
@@ -320,7 +322,9 @@ bool DTVMultiplex::ParseTuningParams(
     if (DTVTunerType::kTunerTypeATSC == type)
         return ParseATSC(_frequency, _modulation);
 
-    LOG(VB_GENERAL, LOG_ERR, LOC + "ParseTuningParams -- Unknown tuner type");
+    LOG(VB_GENERAL, LOG_ERR, LOC +
+        QString("ParseTuningParams -- Unknown tuner type = 0x%1")
+        .arg(type,0,16,QChar('0')));
 
     return false;
 }
@@ -389,7 +393,7 @@ bool DTVMultiplex::FillFromDeliverySystemDesc(DTVTunerType type,
             const TerrestrialDeliverySystemDescriptor cd(desc);
 
             return ParseDVB_T(
-                QString().number(cd.FrequencyHz()), "auto",
+                QString().number(cd.FrequencyHz()), "a",
                 cd.BandwidthString(),               cd.CodeRateHPString(),
                 cd.CodeRateLPString(),              cd.ConstellationString(),
                 cd.TransmissionModeString(),        cd.GuardIntervalString(),
@@ -409,7 +413,7 @@ bool DTVMultiplex::FillFromDeliverySystemDesc(DTVTunerType type,
                 }
 
                 return ParseDVB_S_and_C(
-                    QString().number(cd.FrequencyHz()),  "auto",
+                    QString().number(cd.FrequencyHz()),  "a",
                     QString().number(cd.SymbolRateHz()), cd.FECInnerString(),
                     cd.ModulationString(),
                     cd.PolarizationString());
@@ -418,7 +422,7 @@ bool DTVMultiplex::FillFromDeliverySystemDesc(DTVTunerType type,
             if (type == DTVTunerType::kTunerTypeDVBS2)
             {
                 return ParseDVB_S2(
-                    QString().number(cd.FrequencyHz()),  "auto",
+                    QString().number(cd.FrequencyHz()),  "a",
                     QString().number(cd.SymbolRateHz()), cd.FECInnerString(),
                     cd.ModulationString(),
                     cd.PolarizationString(),
@@ -435,7 +439,7 @@ bool DTVMultiplex::FillFromDeliverySystemDesc(DTVTunerType type,
             const CableDeliverySystemDescriptor cd(desc);
 
             return ParseDVB_S_and_C(
-                    QString().number(cd.FrequencyHz()),  "auto",
+                    QString().number(cd.FrequencyHz()),  "a",
                     QString().number(cd.SymbolRateHz()), cd.FECInnerString(),
                     cd.ModulationString(),               QString());
         }

@@ -39,7 +39,7 @@ bool IPTVRecorder::Open(void)
     LOG(VB_RECORD, LOG_INFO, LOC + "Open() -- begin");
 
     if (_channel->GetFeeder()->IsOpen())
-        _channel->GetFeeder()->Close();
+        return true;    // already open
 
     IPTVChannelInfo chaninfo = _channel->GetCurrentChanInfo();
 
@@ -63,39 +63,25 @@ void IPTVRecorder::Close(void)
     LOG(VB_RECORD, LOG_INFO, LOC + "Close() -- end");
 }
 
-bool IPTVRecorder::PauseAndWait(int timeout)
+void IPTVRecorder::StopRecording(void)
 {
+    LOG(VB_RECORD, LOG_DEBUG, LOC + "StopRecording() -- begin");
     QMutexLocker locker(&pauseLock);
-    if (request_pause)
-    {
-        if (!IsPaused(true))
-        {
-            _channel->GetFeeder()->Stop();
-            _channel->GetFeeder()->Close();
+    request_recording = false;
+    if (_channel && _channel->GetFeeder())
+        _channel->GetFeeder()->Stop();
+    unpauseWait.wakeAll();
+    LOG(VB_RECORD, LOG_DEBUG, LOC + "StopRecording() -- end");
+}
 
-            paused = true;
-            pauseWait.wakeAll();
-            if (tvrec)
-                tvrec->RecorderPaused();
-        }
-
-        unpauseWait.wait(&pauseLock, timeout);
-    }
-
-    if (!request_pause && IsPaused(true))
-    {
-        paused = false;
-
-        if (recording && !_channel->GetFeeder()->IsOpen())
-            Open();
-
-        if (_stream_data)
-            _stream_data->Reset(_stream_data->DesiredProgram());
-
-        unpauseWait.wakeAll();
-    }
-
-    return IsPaused(true);
+void IPTVRecorder::Pause(bool /*clear*/)
+{
+    LOG(VB_RECORD, LOG_DEBUG, LOC + "Pause() -- begin");
+    QMutexLocker locker(&pauseLock);
+    request_pause = true;
+    if (_channel && _channel->GetFeeder())
+        _channel->GetFeeder()->Stop();
+    LOG(VB_RECORD, LOG_DEBUG, LOC + "Pause() -- end");
 }
 
 void IPTVRecorder::run(void)
@@ -115,31 +101,50 @@ void IPTVRecorder::run(void)
         recordingWait.wakeAll();
     }
 
+    // Go into main RTSP loop, feeding data to AddData
     while (IsRecordingRequested() && !IsErrored())
     {
-        if (PauseAndWait())
-            continue;
-
-        if (!IsRecordingRequested())
-            break;
-
-        if (!_channel->GetFeeder()->IsOpen())
+        bool ok = true;
         {
-            usleep(5000);
-            continue;
+            QMutexLocker locker(&pauseLock);
+            const int timeout = 100; // ms
+            if (request_pause)
+            {
+                if (!IsPaused(true))
+                {
+                    paused = true;
+                    _channel->GetFeeder()->Close();
+                    pauseWait.wakeAll();
+                    if (tvrec)
+                        tvrec->RecorderPaused();
+                }
+
+                unpauseWait.wait(&pauseLock, timeout);
+            }
+
+            if (!request_pause && IsPaused(true))
+            {
+                paused = false;
+                ok = Open();
+                unpauseWait.wakeAll();
+            }
+
+            if (IsPaused(true))
+                continue;
         }
 
-        // Go into main RTSP loop, feeding data to AddData
-        _channel->GetFeeder()->Run();
+        if (ok)
+            _channel->GetFeeder()->Run();
     }
+    Close();
 
     // Finish up...
     FinishRecording();
-    Close();
-
     QMutexLocker locker(&pauseLock);
     recording = false;
     recordingWait.wakeAll();
+    unpauseWait.wakeAll();
+    pauseWait.wakeAll();
 
     LOG(VB_RECORD, LOG_INFO, LOC + "run() -- end");
 }
@@ -172,10 +177,6 @@ void IPTVRecorder::AddData(const unsigned char *data, unsigned int dataSize)
     // data may be compose from more than one packet, loop to consume all data
     while (readIndex < dataSize)
     {
-        // If recorder is paused, stop there
-        if (IsPaused(false))
-            return;
-
         // Find the next TS Header in data
         int tsPos = IPTVRecorder_findTSHeader(
             data + readIndex, dataSize - readIndex);

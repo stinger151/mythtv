@@ -28,6 +28,7 @@
 #include "metadata.h"
 #include "playlisteditorview.h"
 #include "playlistview.h"
+#include "streamview.h"
 #include "playlistcontainer.h"
 #include "dbcheck.h"
 #include "filescanner.h"
@@ -185,8 +186,10 @@ static void loadMusic()
     PlaylistContainer *all_playlists = new PlaylistContainer(
             all_music, gCoreContext->GetHostName());
 
-    gMusicData->all_playlists = all_playlists;
     gMusicData->all_music = all_music;
+    gMusicData->all_streams = new AllStream();
+    gMusicData->all_playlists = all_playlists;
+
     gMusicData->initialized = true;
 
     while (!gMusicData->all_playlists->doneLoading() || !gMusicData->all_music->doneLoading())
@@ -195,6 +198,8 @@ static void loadMusic()
         usleep(50000);
     }
     gMusicData->all_playlists->postLoad();
+
+    gMusicData->all_streams->createPlaylist();
 
     gPlayer->loadPlaylist();
 
@@ -210,6 +215,20 @@ static void startPlayback(void)
     MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
 
     PlaylistView *view = new PlaylistView(mainStack);
+
+    if (view->Create())
+        mainStack->AddScreen(view);
+    else
+        delete view;
+}
+
+static void startStreamPlayback(void)
+{
+    loadMusic();
+
+    MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
+
+    StreamView *view = new StreamView(mainStack);
 
     if (view->Create())
         mainStack->AddScreen(view);
@@ -335,6 +354,8 @@ static void MusicCallback(void *data, QString &selection)
         startDatabaseTree();
     else if (sel == "music_play")
         startPlayback();
+    else if (sel == "stream_play")
+        startStreamPlayback();
     else if (sel == "music_rip")
     {
         startRipper();
@@ -433,6 +454,13 @@ static void runMusicPlayback(void)
 {
     GetMythUI()->AddCurrentLocation("playmusic");
     startPlayback();
+    GetMythUI()->RemoveCurrentLocation();
+}
+
+static void runMusicStreamPlayback(void)
+{
+    GetMythUI()->AddCurrentLocation("streammusic");
+    startStreamPlayback();
     GetMythUI()->RemoveCurrentLocation();
 }
 
@@ -546,6 +574,8 @@ static void setupKeys(void)
         "", "", runMusicPlayback);
     REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Select music playlists"),
         "", "", runMusicSelection);
+    REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Play radio stream"),
+        "", "", runMusicStreamPlayback);
     REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Rip CD"),
         "", "", runRipCD);
     REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Scan music"),
@@ -585,19 +615,30 @@ static void setupKeys(void)
         "Decrease rating"),            "7");
     REG_KEY("Music", "REFRESH",    QT_TRANSLATE_NOOP("MythControls",
         "Refresh music tree"),         "8");
-    REG_KEY("Music", "FILTER",     QT_TRANSLATE_NOOP("MythControls",
-        "Filter All My Music"),        "F");
-    REG_KEY("Music", "INCSEARCH",     QT_TRANSLATE_NOOP("MythControls",
-        "Show incremental search dialog"),     "Ctrl+S");
-    REG_KEY("Music", "INCSEARCHNEXT", QT_TRANSLATE_NOOP("MythControls",
-        "Incremental search find next match"), "Ctrl+N");
     REG_KEY("Music", "SPEEDUP",    QT_TRANSLATE_NOOP("MythControls",
         "Increase Play Speed"),   "W");
     REG_KEY("Music", "SPEEDDOWN",  QT_TRANSLATE_NOOP("MythControls",
         "Decrease Play Speed"),   "X");
     REG_KEY("Music", "MARK",       QT_TRANSLATE_NOOP("MythControls",
         "Toggle track selection"), "T");
+    REG_KEY("Music", "TOGGLESHUFFLE", QT_TRANSLATE_NOOP("MythControls",
+        "Toggle shuffle mode"),    "");
+    REG_KEY("Music", "TOGGLEREPEAT",  QT_TRANSLATE_NOOP("MythControls",
+        "Toggle repeat mode"),     "");
 
+    // switch to view key bindings
+    REG_KEY("Music", "SWITCHTOPLAYLIST",              QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the current playlist view"), "");
+    REG_KEY("Music", "SWITCHTOPLAYLISTEDITORTREE",    QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the playlist editor tree view"), "");
+    REG_KEY("Music", "SWITCHTOPLAYLISTEDITORGALLERY", QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the playlist editor gallery view"), "");
+    REG_KEY("Music", "SWITCHTOSEARCH",                QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the search view"), "");
+    REG_KEY("Music", "SWITCHTOVISUALISER",            QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the fullscreen visualiser view"), "");
+    REG_KEY("Music", "SWITCHTORADIO",                 QT_TRANSLATE_NOOP("MythControls",
+        "Switch to the radio stream view"), "");
 
 #ifdef FIXME
 // FIXME need to find a way to stop the media monitor jumping to the main menu before

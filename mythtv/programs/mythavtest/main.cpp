@@ -22,6 +22,7 @@ using namespace std;
 #include "compat.h"
 #include "dbcheck.h"
 #include "mythlogging.h"
+#include "signalhandling.h"
 
 // libmythui
 #include "mythuihelper.h"
@@ -61,7 +62,7 @@ class VideoPerformanceTest
         ctx->SetRingBuffer(rb);
         ctx->SetPlayer(mp);
         ctx->SetPlayingInfo(new ProgramInfo(file));
-        mp->SetPlayerInfo(NULL, GetMythMainWindow(), true, ctx);
+        mp->SetPlayerInfo(NULL, GetMythMainWindow(), ctx);
         FrameScanType scan = deinterlace ? kScan_Interlaced : kScan_Progressive;
         if (!mp->StartPlaying())
         {
@@ -130,6 +131,7 @@ class VideoPerformanceTest
             jitter->RecordCycleTime();
         }
         LOG(VB_GENERAL, LOG_INFO, "-----------------------------------");
+        delete jitter;
     }
 
   private:
@@ -221,7 +223,22 @@ int main(int argc, char *argv[])
 #endif
 
     MythMainWindow *mainWindow = GetMythMainWindow();
+#if CONFIG_DARWIN
+    mainWindow->Init(OPENGL_PAINTER);
+#else
     mainWindow->Init();
+#endif
+
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    signal(SIGHUP, SIG_IGN);
+#endif
 
     if (cmdline.toBool("test"))
     {
@@ -258,6 +275,8 @@ int main(int argc, char *argv[])
     DestroyMythMainWindow();
 
     delete gContext;
+
+    SignalHandler::Done();
 
     return GENERIC_EXIT_OK;
 }

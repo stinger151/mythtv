@@ -1,8 +1,11 @@
 #ifndef GAMESETTINGS_H
 #define GAMESETTINGS_H
 
+// Qt headers
 #include <QString>
+#include <QCoreApplication>
 
+// MythTV headers
 #include <settings.h>
 #include <mythcontext.h>
 
@@ -16,25 +19,24 @@ struct GameTypes {
 
 #define MAX_GAME_TYPES 12
 
-// TODO FIXME Can't initialize translated values statically. They are only
-//            translated if you get lucky with dynamic linking order.
 const GameTypes GameTypeList[MAX_GAME_TYPES] =
 {
-    { QObject::tr("OTHER"),   "OTHER",  "" },
-    { QObject::tr("AMIGA"),   "AMIGA",  "adf,ipf" },
-    { QObject::tr("ATARI"),   "ATARI",  "bin,a26" },
-    { QObject::tr("GAMEGEAR"),    "GAMEGEAR",   "gg" },
-    { QObject::tr("GENESIS/MEGADRIVE"), "GENESIS", "smd,bin,md" },
-    { QObject::tr("MAME"),    "MAME",   "" },
-    { QObject::tr("N64"),     "N64",    "v64,n64" },
-    { QObject::tr("NES"),     "NES",    "zip,nes" },
-    { QObject::tr("PC GAME"), "PC",     "" },
-    { QObject::tr("PCE/TG16"),"PCE",    "pce" },
-    { QObject::tr("SEGA/MASTER SYSYTEM"), "SEGA", "sms" },
-    { QObject::tr("SNES"),    "SNES",   "zip,smc,sfc,fig,swc" }
+    { QT_TRANSLATE_NOOP("(GameTypes)", "OTHER"),   "OTHER",  "" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "AMIGA"),   "AMIGA",  "adf,ipf" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "ATARI"),   "ATARI",  "bin,a26" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "GAMEGEAR"),    "GAMEGEAR",   "gg" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "GENESIS/MEGADRIVE"), "GENESIS", "smd,bin,md" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "MAME"),    "MAME",   "" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "N64"),     "N64",    "v64,n64" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "NES"),     "NES",    "zip,nes" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "PC GAME"), "PC",     "" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "PCE/TG16"),"PCE",    "pce" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "SEGA/MASTER SYSTEM"), "SEGA", "sms" },
+    { QT_TRANSLATE_NOOP("(GameTypes)", "SNES"),    "SNES",   "zip,smc,sfc,fig,swc" }
 };
 
-const QString GetGameExtensions(const QString GameType);
+const QString GetGameTypeName(const QString GameType);
+const QString GetGameTypeExtensions(const QString GameType);
 
 class MythGameGeneralSettings;
 class MythGamePlayerSettings;
@@ -58,6 +60,8 @@ class GameDBStorage : public SimpleDBStorage
 
 class MythGameGeneralSettings : public ConfigurationWizard
 {
+    Q_DECLARE_TR_FUNCTIONS(MythGameGeneralSettings)
+
   public:
     MythGameGeneralSettings();
 };
@@ -82,7 +86,9 @@ class MythGamePlayerSettings : public QObject, public ConfigurationWizard
     {
         if (name)
             ConfigurationWizard::Save();
-    };
+    }
+
+    virtual void Save(QString /*destination*/) { }
 
   private:
     class ID : public AutoIncrementDBSetting
@@ -101,8 +107,9 @@ class MythGamePlayerSettings : public QObject, public ConfigurationWizard
         Name(const MythGamePlayerSettings &parent) :
             LineEditSetting(this), GameDBStorage(this, parent, "playername")
         {
-            setLabel(QObject::tr("Player Name"));
-            setHelpText(QObject::tr("Name of this Game and or Emulator"));
+            setLabel(MythGamePlayerSettings::tr("Player Name"));
+            setHelpText(MythGamePlayerSettings::tr("Name of this Game and or "
+                                                   "Emulator"));
         }
     };
 
@@ -123,10 +130,11 @@ class MPUBLIC MythGamePlayerEditor : public QObject, public ConfigurationDialog
     virtual MythDialog *dialogWidget(MythMainWindow *parent,
                                      const char     *widgetName=0);
 
-    virtual DialogCode exec(void);
+    virtual DialogCode exec(bool saveOnExec = true, bool doLoad = true);
 
     virtual void Load(void);
     virtual void Save(void) { }
+    virtual void Save(QString /*destination*/) { }
 
 public slots:
     void menu();

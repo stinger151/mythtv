@@ -1,6 +1,17 @@
 #ifndef _PROGRAM_INFO_TYPES_H_
 #define _PROGRAM_INFO_TYPES_H_
 
+//////////////////////////////////////////////////////////////////////
+//
+// WARNING
+//
+// The enums in this header are used in libmythservicecontracts,
+// and for database values: hence when removing something from
+// these enums leave a gap, and when adding a new value give it
+// a explicit integer value.
+// 
+//////////////////////////////////////////////////////////////////////
+
 // ANSI C
 #include <stdint.h> // for [u]int[32,64]_t
 
@@ -167,7 +178,7 @@ typedef enum AudioProps {
 #define kAudioPropertyOffset 0
 #define kAudioPropertyMask (0x3f<<kAudioPropertyOffset)
 
-/// if VideoProps changes, the audioprop column in program and
+/// if VideoProps changes, the videoprop column in program and
 /// recordedprogram has to changed accordingly
 typedef enum VideoProps {
     // For backwards compatibility do not change 0 or 1
@@ -178,12 +189,13 @@ typedef enum VideoProps {
     VID_720           = 0x08,
     VID_1080          = 0x10,
     VID_DAMAGED       = 0x20,
-} VideoProperty; // has 6 bits in ProgramInfo::properties
-#define kVideoPropertyBits 6
+    VID_3DTV          = 0x40,
+} VideoProperty; // has 7 bits in ProgramInfo::properties
+#define kVideoPropertyBits 7
 #define kVideoPropertyOffset kAudioPropertyBits
 #define kVideoPropertyMask (0x3f<<kVideoPropertyOffset)
 
-/// if SubtitleTypes changes, the audioprop column in program and
+/// if SubtitleTypes changes, the subtitletypes column in program and
 /// recordedprogram has to changed accordingly
 typedef enum SubtitleTypes {
     // For backwards compatibility do not change 0 or 1
@@ -255,12 +267,5 @@ typedef enum AutoExpireTypes {
     kDeletedAutoExpire = 9999,
     kLiveTVAutoExpire = 10000
 } AutoExpireType;
-
-typedef enum MythDateFormats {
-    TextDate  = Qt::TextDate,
-    ISODate   = Qt::ISODate,
-    LocalDate = Qt::LocalDate,
-    MythDate  = 0x100,
-} MythDateFormat;
 
 #endif // _PROGRAM_INFO_TYPES_H_

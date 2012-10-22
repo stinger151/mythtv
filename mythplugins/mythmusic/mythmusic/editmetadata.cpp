@@ -359,12 +359,13 @@ bool EditMetadataDialog::Create(void)
         return false;
     }
 
-    m_yearSpin->SetRange(0, 9999, 1);
-    m_trackSpin->SetRange(0, 9999, 1);
+    m_yearSpin->SetRange(QDate::currentDate().year(), 1000, 1);
+    m_yearSpin->AddSelection(0, "None");
+    m_trackSpin->SetRange(0, 999, 1);
 
     if (m_ratingSpin)
     {
-        m_ratingSpin->SetRange(0, 10, 1);
+        m_ratingSpin->SetRange(0, 10, 1, 2);
         connect(m_ratingSpin, SIGNAL(itemSelected(MythUIButtonListItem*)),
                 SLOT(ratingSpinChanged(MythUIButtonListItem*)));
     }
@@ -524,15 +525,14 @@ void EditMetadataDialog::checkClicked(bool state)
 {
     if (!state)
     {
-        if (m_compArtistEdit)
-            m_compArtistEdit->SetText(m_metadata->Artist());
+        m_compArtistEdit->SetText(m_metadata->Artist());
     }
     else
     {
-        if (m_compArtistEdit->GetText().isEmpty() || m_compArtistEdit->GetText() == m_artistEdit->GetText())
+        if (m_compArtistEdit->GetText().isEmpty() ||
+            m_compArtistEdit->GetText() == m_artistEdit->GetText())
         {
-            if (m_compArtistEdit)
-                m_compArtistEdit->SetText(tr("Various Artists"));
+            m_compArtistEdit->SetText(tr("Various Artists"));
         }
     }
 }

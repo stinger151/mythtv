@@ -38,10 +38,14 @@ enum RingBufferType
     kRingBuffer_DVD,
     kRingBuffer_BD,
     kRingBuffer_HTTP,
+    kRingBuffer_HLS,
+    kRingBuffer_MHEG
 };
 
 class MTV_PUBLIC RingBuffer : protected MThread
 {
+    friend class ICRingBuffer;
+
   public:
     static RingBuffer *Create(const QString &lfilename, bool write,
                               bool usereadahead = true,
@@ -84,6 +88,7 @@ class MTV_PUBLIC RingBuffer : protected MThread
     virtual bool IsBookmarkAllowed(void) { return true; }
     virtual int  BestBufferSize(void)   { return 32768; }
     static QString BitrateToString(uint64_t rate, bool hz = false);
+    RingBufferType GetType() const { return type; }
 
     // DVD and bluray methods
     bool IsDisc(void) const { return IsDVD() || IsBD(); }
@@ -150,6 +155,8 @@ class MTV_PUBLIC RingBuffer : protected MThread
 
     static const int kDefaultOpenTimeout;
     static const int kLiveTVOpenTimeout;
+
+    static void AVFormatInitNetwork(void);
 
   protected:
     RingBuffer(RingBufferType rbtype);
@@ -252,6 +259,9 @@ class MTV_PUBLIC RingBuffer : protected MThread
     static QMutex subExtLock;
     static QStringList subExt;
     static QStringList subExtNoCheck;
+
+  private:
+    static bool gAVformat_net_initialised;
 };
 
 #endif // _RINGBUFFER_H_

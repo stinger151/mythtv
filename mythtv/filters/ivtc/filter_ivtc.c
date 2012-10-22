@@ -249,12 +249,12 @@ static FmtConv FmtList[] =
             FMT_NULL
 };
 
-ConstFilterInfo filter_table[] =
+const FilterInfo filter_table[] =
 {
     {
         filter_init: &NewIvtcFilter,
-        name:       "ivtc",
-        descript:   "inverse telecine filter",
+        name:       (char*)"ivtc",
+        descript:   (char*)"inverse telecine filter",
         formats:    FmtList,
         libname:    NULL
     },

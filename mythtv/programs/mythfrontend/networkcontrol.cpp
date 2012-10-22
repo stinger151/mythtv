@@ -10,6 +10,7 @@
 #include <QMap>
 
 #include "mythcorecontext.h"
+#include "mythmiscutil.h"
 #include "mythversion.h"
 #include "networkcontrol.h"
 #include "programinfo.h"
@@ -828,6 +829,17 @@ QString NetworkControl::processPlay(NetworkCommand *nc, int clientID)
         message = QString("NETWORK_CONTROL VOLUME %1")
                           .arg(nc->getArg(2).toLower());
     }
+    else if (is_abbrev("subtitles", nc->getArg(1), 2))
+    {
+	if (nc->getArgCount() < 3)
+	    message = QString("NETWORK_CONTROL SUBTITLES 0");
+	else if (!nc->getArg(2).toLower().contains(QRegExp("^\\d+$")))
+	    return QString("ERROR: See 'help %1' for usage information")
+		.arg(nc->getArg(0));
+	else
+	    message = QString("NETWORK_CONTROL SUBTITLES %1")
+		.arg(nc->getArg(2));
+    }
     else
         return QString("ERROR: See 'help %1' for usage information")
                        .arg(nc->getArg(0));
@@ -907,7 +919,7 @@ QString NetworkControl::processQuery(NetworkCommand *nc)
 
     }
     else if(is_abbrev("time", nc->getArg(1)))
-        return QDateTime::currentDateTime().toString(Qt::ISODate);
+        return MythDate::current_iso_string();
     else if (is_abbrev("uptime", nc->getArg(1)))
     {
         QString str;
@@ -1116,6 +1128,7 @@ QString NetworkControl::processHelp(NetworkCommand *nc)
             "play speed 1/3x        - Playback at 1/3x speed\r\n"
             "play speed 1/2x        - Playback at 1/2x speed\r\n"
             "play stop              - Stop playback\r\n"
+            "play subtitles [#]     - Switch on indicated subtitle tracks\r\n"
             "play music play        - Resume playback (MythMusic)\r\n"
             "play music pause       - Pause playback (MythMusic)\r\n"
             "play music stop        - Stop Playback (MythMusic)\r\n"
@@ -1343,8 +1356,8 @@ QString NetworkControl::listSchedule(const QString& chanID) const
     queryStr += " ORDER BY starttime, endtime, chanid";
 
     query.prepare(queryStr);
-    query.bindValue(":START", QDateTime::currentDateTime());
-    query.bindValue(":END", QDateTime::currentDateTime());
+    query.bindValue(":START", MythDate::current());
+    query.bindValue(":END", MythDate::current());
     if (!chanID.isEmpty())
     {
         query.bindValue(":CHANID", chanID);
@@ -1363,11 +1376,11 @@ QString NetworkControl::listSchedule(const QString& chanID) const
 
             result +=
                 QString("%1 %2 %3 %4")
-                        .arg(QString::number(query.value(0).toInt())
-                             .rightJustified(5, ' '))
-                        .arg(query.value(1).toDateTime().toString(Qt::ISODate))
-                        .arg(query.value(2).toDateTime().toString(Qt::ISODate))
-                        .arg(atitle.constData());
+                .arg(QString::number(query.value(0).toInt())
+                     .rightJustified(5, ' '))
+                .arg(MythDate::as_utc(query.value(1).toDateTime()).toString(Qt::ISODate))
+                .arg(MythDate::as_utc(query.value(2).toDateTime()).toString(Qt::ISODate))
+                .arg(atitle.constData());
 
             if (appendCRLF)
                 result += "\r\n";
@@ -1417,8 +1430,8 @@ QString NetworkControl::listRecordings(QString chanid, QString starttime)
 
             result +=
                 QString("%1 %2 %3").arg(query.value(0).toInt())
-                        .arg(query.value(1).toDateTime().toString(Qt::ISODate))
-                        .arg(episode);
+                .arg(MythDate::as_utc(query.value(1).toDateTime()).toString(Qt::ISODate))
+                .arg(episode);
 
             if (appendCRLF)
                 result += "\r\n";

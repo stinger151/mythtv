@@ -326,6 +326,7 @@ class moviedbQueries():
     def movieSearch(self, title):
         '''Search for movies that match the title and output their "tmdb#:Title" to stdout
         '''
+        title = title.replace("-"," ")
         try:
             data = self.config['moviedb'].searchTitle(title)
         except TmdbMovieOrPersonNotFound, msg:
@@ -553,6 +554,8 @@ def main():
                         help=u"Interaction mode (allows selection of a specific Movie or Person)")
     parser.add_option(  "-l", "--language", metavar="LANGUAGE", default=u'en', dest="language",
                         help=u"Select data that matches the specified language fall back to english if nothing found (e.g. 'es' Español, 'de' Deutsch ... etc)")
+    parser.add_option(  "-a", "--area", metavar="COUNTRY", default=False, dest="country", 
+			help=u"Select certificate data that matches the specified country (e.g. 'de' Germany, 'gb' UK ... etc)")
     parser.add_option(  "-M", "--movielist", action="store_true", default=False, dest="movielist",
                         help=u"Get matching Movie list")
     parser.add_option(  "-D", "--moviedata", action="store_true", default=False, dest="moviedata",
@@ -607,13 +610,18 @@ def main():
         sys.stderr.write("! Error: There must be a non-empty argument, yours is empty.\n")
         sys.exit(1)
 
+
+    passedLanguage = opts.language
+    if (opts.language and opts.country):
+        passedLanguage = opts.language + "-" + opts.country
+    
     Queries = moviedbQueries(apikey,
                 mythtv = True,
                 interactive = opts.interactive,
                 select_first = False,
                 debug = opts.debug,
                 custom_ui = None,
-                language = opts.language,
+                language = passedLanguage,
                 search_all_languages = False,)
 
     # Display in XML format

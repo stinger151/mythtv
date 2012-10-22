@@ -27,6 +27,7 @@
 #include "mythdirs.h"
 #include "mythmedia.h"
 #include "mythversion.h"
+#include "mythdate.h"
 
 MythThemedMenuState::MythThemedMenuState(MythScreenStack *parent,
                                          const QString &name)
@@ -95,10 +96,8 @@ MythThemedMenu::MythThemedMenu(const QString &cdir, const QString &menufile,
                                bool allowreorder, MythThemedMenuState *state)
     : MythThemedMenuState(parent, name),
       m_state(state), m_allocedstate(false), m_foundtheme(false),
-      m_ignorekeys(false), m_wantpop(false)
+      m_ignorekeys(false), m_wantpop(false), m_menuPopup(NULL)
 {
-    m_menuPopup = NULL;
-
     if (!m_state)
     {
         m_state = new MythThemedMenuState(parent, "themedmenustate");
@@ -396,9 +395,9 @@ void MythThemedMenu::customEvent(QEvent *event)
             if (text == password)
             {
                 QString timestamp_setting = QString("%1Time").arg(button.password);
-                QDateTime curr_time = QDateTime::currentDateTime();
-                QString last_time_stamp = curr_time.toString(Qt::TextDate);
-                GetMythDB()->SetSetting(timestamp_setting, last_time_stamp);
+                QDateTime curr_time = MythDate::current();
+                QString last_time_stamp = 
+                    MythDate::toString(curr_time, MythDate::kDatabase);
                 GetMythDB()->SaveSetting(timestamp_setting, last_time_stamp);
                 buttonAction(item, true);
             }
@@ -756,13 +755,8 @@ bool MythThemedMenu::handleAction(const QString &action, const QString &password
 {
     MythUIMenuCallbacks *cbs = GetMythUI()->GetMenuCBs();
 
-    if (((password == "SetupPinCode") &&
-         GetMythDB()->GetNumSetting("SetupPinCodeRequired", 0)) ||
-         (!password.isEmpty() && password != "SetupPinCode"))
-    {
-        if (!checkPinCode(password))
-            return true;
-    }
+    if (!password.isEmpty() && !checkPinCode(password))
+        return true;
 
     if (action.left(5) == "EXEC ")
     {
@@ -876,7 +870,7 @@ bool MythThemedMenu::findDepends(const QString &fileList)
 bool MythThemedMenu::checkPinCode(const QString &password_setting)
 {
     QString timestamp_setting = QString("%1Time").arg(password_setting);
-    QDateTime curr_time = QDateTime::currentDateTime();
+    QDateTime curr_time = MythDate::current();
     QString last_time_stamp = GetMythDB()->GetSetting(timestamp_setting);
     QString password = GetMythDB()->GetSetting(password_setting);
 
@@ -892,12 +886,11 @@ bool MythThemedMenu::checkPinCode(const QString &password_setting)
     }
     else
     {
-        QDateTime last_time = QDateTime::fromString(last_time_stamp,
-                                                    Qt::TextDate);
-        if (last_time.secsTo(curr_time) < 120)
+        QDateTime last_time = MythDate::fromString(last_time_stamp);
+        if (!last_time.isValid() || last_time.secsTo(curr_time) < 120)
         {
-            last_time_stamp = curr_time.toString(Qt::TextDate);
-            GetMythDB()->SetSetting(timestamp_setting, last_time_stamp);
+            last_time_stamp = MythDate::toString(
+                curr_time, MythDate::kDatabase);
             GetMythDB()->SaveSetting(timestamp_setting, last_time_stamp);
             return true;
         }

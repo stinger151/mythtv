@@ -66,7 +66,6 @@ class MUI_PUBLIC MythRenderVDPAU : public MythRender
     bool        CreateDummy(void);
 
     MythRenderVDPAU();
-   ~MythRenderVDPAU();
 
     uint GetColorKey(void)         { return m_colorKey;  }
     void SetPreempted(void)        { m_preempted = true; }
@@ -136,8 +135,10 @@ class MUI_PUBLIC MythRenderVDPAU : public MythRender
     void  ChangeVideoSurfaceOwner(uint id);
 
     void  Decode(uint id, struct vdpau_render_state *render);
+    void  SetVideoFlip(void) { m_flipFrames = true; }
 
   private:
+    virtual ~MythRenderVDPAU();
     bool CreateDevice(void);
     bool GetProcs(void);
     bool CreatePresentationQueue(void);
@@ -180,6 +181,7 @@ class MUI_PUBLIC MythRenderVDPAU : public MythRender
     VdpPresentationQueueTarget       m_flipTarget;
     bool                             m_flipReady;
     uint                             m_colorKey;
+    bool                             m_flipFrames;
 
     QVector<uint>                    m_surfaces;
     QHash<uint, VDPAUOutputSurface>  m_outputSurfaces;

@@ -20,6 +20,7 @@
 #include "commandlineparser.h"
 #include "tv.h"
 #include "mythlogging.h"
+#include "signalhandling.h"
 
 // libmythui
 #include "mythmainwindow.h"
@@ -73,11 +74,23 @@ int main(int argc, char **argv)
     if (cmdline.toBool("setup"))
         bShowSettings = true;
 
+#ifndef _WIN32
+    QList<int> signallist;
+    signallist << SIGINT << SIGTERM << SIGSEGV << SIGABRT << SIGBUS << SIGFPE
+               << SIGILL;
+#if ! CONFIG_DARWIN
+    signallist << SIGRTMIN;
+#endif
+    SignalHandler::Init(signallist);
+    signal(SIGHUP, SIG_IGN);
+#endif
+
     gContext = new MythContext(MYTH_BINARY_VERSION);
     if (!gContext->Init())
     {
         LOG(VB_GENERAL, LOG_ERR,
             "mythwelcome: Could not initialize MythContext. Exiting.");
+        SignalHandler::Done();
         return GENERIC_EXIT_NO_MYTHCONTEXT;
     }
 
@@ -85,6 +98,7 @@ int main(int argc, char **argv)
     {
         LOG(VB_GENERAL, LOG_ERR,
             "mythwelcome: Could not open the database. Exiting.");
+        SignalHandler::Done();
         return -1;
     }
 
@@ -96,11 +110,6 @@ int main(int argc, char **argv)
     MythTranslation::load("mythfrontend");
 
     GetMythUI()->LoadQtConfig();
-
-#ifdef Q_WS_MACX
-    // Mac OS 10.4 and Qt 4.4 have window-focus problems
-    gCoreContext->SetSetting("RunFrontendInWindow", "1");
-#endif
 
     MythMainWindow *mainWindow = GetMythMainWindow();
     mainWindow->Init();
@@ -121,7 +130,12 @@ int main(int argc, char **argv)
         if (welcome->Create())
             mainStack->AddScreen(welcome, false);
         else
+        {
+            DestroyMythMainWindow();
+            delete gContext;
+            SignalHandler::Done();
             return -1;
+        }
 
         do
         {
@@ -133,6 +147,8 @@ int main(int argc, char **argv)
     DestroyMythMainWindow();
 
     delete gContext;
+
+    SignalHandler::Done();
 
     return 0;
 }
