@@ -1,29 +1,14 @@
 // -*- Mode: c++ -*-
 
-#include <unistd.h>
-
 // MythTV headers
+#include "iptvsignalmonitor.h"
 #include "mpegstreamdata.h"
 #include "iptvchannel.h"
-#include "iptvfeederwrapper.h"
-#include "iptvsignalmonitor.h"
 #include "mythlogging.h"
-
-#undef DBG_SM
-#define DBG_SM(FUNC, MSG) LOG(VB_CHANNEL, LOG_DEBUG, \
-    QString("IPTVSM(%1)::%2: %3").arg(channel->GetDevice()).arg(FUNC).arg(MSG))
 
 #define LOC QString("IPTVSM(%1): ").arg(channel->GetDevice())
 
-void IPTVTableMonitorThread::run(void)
-{
-    RunProlog();
-    m_parent->RunTableMonitor();
-    RunEpilog();
-}
-
-/** \fn IPTVSignalMonitor::IPTVSignalMonitor(int,IPTVChannel*,uint64_t)
- *  \brief Initializes signal lock and signal values.
+/** \brief Initializes signal lock and signal values.
  *
  *   Start() must be called to actually begin continuous
  *   signal monitoring. The timeout is set to 3 seconds,
@@ -39,20 +24,16 @@ void IPTVTableMonitorThread::run(void)
 IPTVSignalMonitor::IPTVSignalMonitor(int db_cardnum,
                                      IPTVChannel *_channel,
                                      uint64_t _flags) :
-    DTVSignalMonitor(db_cardnum, _channel, _flags),
-    dtvMonitorRunning(false), tableMonitorThread(NULL)
+    DTVSignalMonitor(db_cardnum, _channel, _flags)
 {
-    bool isLocked = false;
-    IPTVChannelInfo chaninfo = GetChannel()->GetCurrentChanInfo();
-    if (chaninfo.isValid())
-    {
-        isLocked = GetChannel()->GetFeeder()->Open(chaninfo.m_url);
-    }
+    LOG(VB_CHANNEL, LOG_INFO, LOC + "ctor");
+
+    // TODO init isLocked
+    bool isLocked = true;
 
     QMutexLocker locker(&statusLock);
     signalLock.SetValue((isLocked) ? 1 : 0);
     signalStrength.SetValue((isLocked) ? 100 : 0);
-    m_gotlock = false;
 }
 
 /** \fn IPTVSignalMonitor::~IPTVSignalMonitor()
@@ -60,13 +41,8 @@ IPTVSignalMonitor::IPTVSignalMonitor(int db_cardnum,
  */
 IPTVSignalMonitor::~IPTVSignalMonitor()
 {
-    GetChannel()->GetFeeder()->RemoveListener(this);
+    LOG(VB_CHANNEL, LOG_INFO, LOC + "dtor");
     Stop();
-    if (!m_gotlock)
-    {
-        DBG_SM("~IPTVSignalMonitor", "Didn't get a lock earlier, closing feed");
-        GetChannel()->GetFeeder()->Close();
-    }
 }
 
 IPTVChannel *IPTVSignalMonitor::GetChannel(void)
@@ -79,57 +55,25 @@ IPTVChannel *IPTVSignalMonitor::GetChannel(void)
  */
 void IPTVSignalMonitor::Stop(void)
 {
-    DBG_SM("Stop", "begin");
-    GetChannel()->GetFeeder()->RemoveListener(this);
+    LOG(VB_CHANNEL, LOG_INFO, LOC + "Stop() -- begin");
     SignalMonitor::Stop();
-    if (tableMonitorThread)
-    {
-        GetChannel()->GetFeeder()->Stop();
-        dtvMonitorRunning = false;
-        tableMonitorThread->wait();
-        delete tableMonitorThread;
-        tableMonitorThread = NULL;
-    }
-    DBG_SM("Stop", "end");
+    GetChannel()->SetStreamData(NULL);
+    m_streamHandlerStarted = false;
+    LOG(VB_CHANNEL, LOG_INFO, LOC + "Stop() -- end");
 }
 
-/** \fn IPTVSignalMonitor::RunTableMonitor(void)
- */
-void IPTVSignalMonitor::RunTableMonitor(void)
+void IPTVSignalMonitor::SetStreamData(MPEGStreamData *data)
 {
-    DBG_SM("Run", "begin");
-    dtvMonitorRunning = true;
-
-    GetStreamData()->AddListeningPID(0);
-
-    GetChannel()->GetFeeder()->AddListener(this);
-    GetChannel()->GetFeeder()->Run();
-    GetChannel()->GetFeeder()->RemoveListener(this);
-
-    while (dtvMonitorRunning)
-        usleep(10000);
-
-    DBG_SM("Run", "end");
+    DTVSignalMonitor::SetStreamData(data);
+    GetChannel()->SetStreamData(GetStreamData());
 }
 
-void IPTVSignalMonitor::AddData(
-    const unsigned char *data, unsigned int dataSize)
+void IPTVSignalMonitor::HandlePAT(const ProgramAssociationTable *pat)
 {
-    GetStreamData()->ProcessData((unsigned char*)data, dataSize);
+    LOG(VB_CHANNEL, LOG_INFO, LOC + QString("HandlePAT pn: %1")
+        .arg(programNumber));
+    DTVSignalMonitor::HandlePAT(pat);
 }
-
-bool IPTVSignalMonitor::IsAllGood(void) const
-{
-    QMutexLocker locker(&statusLock);
-
-    bool ret = DTVSignalMonitor::IsAllGood();
-    if (ret)
-    {
-        m_gotlock = true;
-    }
-    return ret;
-}
-
 
 /** \fn IPTVSignalMonitor::UpdateValues(void)
  *  \brief Fills in frontend stats and emits status Qt signals.
@@ -142,7 +86,7 @@ void IPTVSignalMonitor::UpdateValues(void)
     if (!running || exit)
         return;
 
-    if (dtvMonitorRunning)
+    if (m_streamHandlerStarted)
     {
         EmitStatus();
         if (IsAllGood())
@@ -170,11 +114,8 @@ void IPTVSignalMonitor::UpdateValues(void)
                    kDTVSigMon_WaitForMGT | kDTVSigMon_WaitForVCT |
                    kDTVSigMon_WaitForNIT | kDTVSigMon_WaitForSDT))
     {
-        tableMonitorThread = new IPTVTableMonitorThread(this);
-        DBG_SM("UpdateValues", "Waiting for table monitor to start");
-        while (!dtvMonitorRunning)
-            usleep(5000);
-        DBG_SM("UpdateValues", "Table monitor started");
+        GetChannel()->SetStreamData(GetStreamData());
+        m_streamHandlerStarted = true;
     }
 
     update_done = true;

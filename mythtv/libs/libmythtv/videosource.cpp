@@ -1537,7 +1537,7 @@ class IPTVHost : public LineEditSetting, public CaptureCardDBStorage
         LineEditSetting(this),
         CaptureCardDBStorage(this, parent, "videodevice")
     {
-        setValue("http://mafreebox.freebox.fr/freeboxtv/playlist.m3u");
+        setValue("http://192.168.99.1/channels.m3u");
         setLabel(QObject::tr("M3U URL"));
         setHelpText(QObject::tr("URL of M3U containing IPTV channel URLs."));
     }

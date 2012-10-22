@@ -1,59 +1,38 @@
-// -*- Mode: c++ -*-
-/**
+/** -*- Mode: c++ -*-
  *  IPTVRecorder
- *  Copyright (c) 2006 by Laurent Arnal, Benjamin Lerman & Mickaël Remars
+ *  Copyright (c) 2006-2009 Silicondust Engineering Ltd, and
+ *                          Daniel Thor Kristjansson
+ *  Copyright (c) 2012 Digital Nirvana, Inc.
  *  Distributed as part of MythTV under GPL v2 and later.
  */
 
 #ifndef _IPTV_RECORDER_H_
 #define _IPTV_RECORDER_H_
 
-#include <QWaitCondition>
-
+// MythTV includes
 #include "dtvrecorder.h"
 #include "streamlisteners.h"
 
-class QString;
 class IPTVChannel;
 
-/** \brief Processes data from a IPTVFeeder and writes it to disk.
- */
-class IPTVRecorder : public DTVRecorder, public TSDataListener
+class IPTVRecorder : public DTVRecorder
 {
-    friend class IPTVMediaSink;
-
   public:
-    IPTVRecorder(TVRec *rec, IPTVChannel *channel);
+    IPTVRecorder(TVRec*, IPTVChannel*);
     ~IPTVRecorder();
 
-    bool Open(void);
-    void Close(void);
-    void StopRecording(void);
+    virtual bool Open(void); // RecorderBase
+    virtual void Close(void); // RecorderBase
+    bool IsOpen(void) const;
 
-    virtual void run(void);
+    virtual void SetStreamData(MPEGStreamData*); // DTVRecorder
+    virtual bool PauseAndWait(int timeout = 100); // RecorderBase
 
-    virtual void SetOptionsFromProfile(RecordingProfile*, const QString&,
-                                       const QString&, const QString&) {}
-
-    virtual void SetStreamData(void);
-
-    virtual bool IsExternalChannelChangeSupported(void) { return true; }
-
-    virtual void Pause(bool clear = true);
+    virtual void run(void); // QRunnable
 
   private:
-    bool ProcessTSPacket(const TSPacket &tspacket);
-
-    // implements TSDataListener
-    void AddData(const unsigned char *data, unsigned int dataSize);
-
-  private:
-    IPTVChannel *_channel;
-
-  private:
-    IPTVRecorder &operator=(const IPTVRecorder&); //< avoid default impl
-    IPTVRecorder(const IPTVRecorder&);            //< avoid default impl
-    IPTVRecorder();                                  //< avoid default impl
+    IPTVChannel *m_channel;
+    bool m_open;
 };
 
 #endif // _IPTV_RECORDER_H_

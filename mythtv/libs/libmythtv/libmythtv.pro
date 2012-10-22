@@ -1,5 +1,6 @@
 include ( ../../settings.pro )
 
+
 QT += network xml sql
 
 TEMPLATE = lib
@@ -22,15 +23,7 @@ contains(INCLUDEPATH, /usr/local/include) {
 DEPENDPATH  += .
 DEPENDPATH  += ../libmyth ../libmyth/audio
 DEPENDPATH  += ../libmythbase ../libmythhdhomerun
-DEPENDPATH  += ./dvbdev ./mpeg ./iptv ./channelscan ./visualisations
-DEPENDPATH  += ../libmythlivemedia/BasicUsageEnvironment/include
-DEPENDPATH  += ../libmythlivemedia/BasicUsageEnvironment
-DEPENDPATH  += ../libmythlivemedia/groupsock/include
-DEPENDPATH  += ../libmythlivemedia/groupsock
-DEPENDPATH  += ../libmythlivemedia/liveMedia/include
-DEPENDPATH  += ../libmythlivemedia/liveMedia
-DEPENDPATH  += ../libmythlivemedia/UsageEnvironment/include
-DEPENDPATH  += ../libmythlivemedia/UsageEnvironment
+DEPENDPATH  += ./dvbdev ./mpeg ./rtp ./channelscan ./visualisations
 DEPENDPATH  += ../libmythbase ../libmythui
 DEPENDPATH  += ../libmythupnp
 DEPENDPATH  += ../libmythservicecontracts
@@ -556,30 +549,20 @@ using_backend {
         DEFINES += USING_FIREWIRE
     }
 
-    # Support for MPEG2 TS streams (including FreeBox http://adsl.free.fr/)
-    using_iptv {
-        HEADERS += iptvchannel.h              iptvrecorder.h
-        HEADERS += iptvsignalmonitor.h
-        HEADERS += iptv/iptvchannelfetcher.h  iptv/iptvchannelinfo.h
-        HEADERS += iptv/iptvmediasink.h
-        HEADERS += iptv/iptvfeeder.h          iptv/iptvfeederwrapper.h
-        HEADERS += iptv/iptvfeederrtsp.h      iptv/iptvfeederudp.h
-        HEADERS += iptv/iptvfeederfile.h      iptv/iptvfeederlive.h
-        HEADERS += iptv/iptvfeederrtp.h       iptv/timeoutedtaskscheduler.h
-        HEADERS += iptv/iptvfeederhls.h
+    # Support for RTP/UDP streams
+    HEADERS += iptvchannel.h              iptvrecorder.h
+    HEADERS += iptvsignalmonitor.h        iptvstreamhandler.h
+    HEADERS += iptvchannelfetcher.h       iptvtuningdata.h
+    HEADERS += iptvrtsp.h
+    HEADERS += udppacket.h                udppacketbuffer.h
+    HEADERS += packetbuffer.h             rtppacketbuffer.h
+    HEADERS += rtpdatapacket.h            rtpfecpacket.h
 
-        SOURCES += iptvchannel.cpp            iptvrecorder.cpp
-        SOURCES += iptvsignalmonitor.cpp
-        SOURCES += iptv/iptvchannelfetcher.cpp
-        SOURCES += iptv/iptvmediasink.cpp
-        SOURCES += iptv/iptvfeeder.cpp        iptv/iptvfeederwrapper.cpp
-        SOURCES += iptv/iptvfeederrtsp.cpp    iptv/iptvfeederudp.cpp
-        SOURCES += iptv/iptvfeederfile.cpp    iptv/iptvfeederlive.cpp
-        SOURCES += iptv/iptvfeederrtp.cpp     iptv/timeoutedtaskscheduler.cpp
-        SOURCES += iptv/iptvfeederhls.cpp
-
-        DEFINES += USING_IPTV
-    }
+    SOURCES += iptvchannel.cpp            iptvrecorder.cpp
+    SOURCES += iptvsignalmonitor.cpp      iptvstreamhandler.cpp
+    SOURCES += iptvchannelfetcher.cpp     iptvrtsp.cpp
+    SOURCES += packetbuffer.cpp           rtppacketbuffer.cpp
+    DEFINES += USING_IPTV
 
     # Support for HDHomeRun box
     using_hdhomerun {

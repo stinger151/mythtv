@@ -179,7 +179,14 @@ void StreamHandler::Start(void)
 
 void StreamHandler::Stop(void)
 {
-    SetRunningDesired(false);
+    QMutexLocker locker(&_start_stop_lock);
+
+    while (_running)
+    {
+        SetRunningDesired(false);
+        _running_state_changed.wait(&_start_stop_lock, 100);
+    }
+
     wait();
 }
 
@@ -198,6 +205,13 @@ void StreamHandler::SetRunning(bool is_running,
     _using_buffering      = is_using_buffering;
     _using_section_reader = is_using_section_reader;
     _running_state_changed.wakeAll();
+}
+
+void StreamHandler::SetRunningDesired(bool desired)
+{
+    _running_desired = desired;
+    if (!desired)
+        MThread::exit(0);
 }
 
 bool StreamHandler::AddPIDFilter(PIDInfo *info)

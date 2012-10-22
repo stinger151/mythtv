@@ -38,7 +38,8 @@ IPTVFeederHLS::~IPTVFeederHLS()
 bool IPTVFeederHLS::IsHLS(const QString &url)
 {
     QString turl = url;
-    return HLSRingBuffer::TestForHTTPLiveStreaming(turl);
+	 LOG(VB_RECORD, LOG_INFO, LOC + QString("isHLS (%1) -- begin").arg(url));
+    return true;//HLSRingBuffer::TestForHTTPLiveStreaming(turl);
 }
 
 bool IPTVFeederHLS::IsOpen(void) const
