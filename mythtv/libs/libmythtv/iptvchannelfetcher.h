@@ -1,17 +1,55 @@
+/** -*- Mode: c++ -*-
+ *  IPTVChannelInfo
+ *  Distributed as part of MythTV under GPL v2 and later.
+ */
+
 #ifndef _IPTVCHANNELFETCHER_H_
 #define _IPTVCHANNELFETCHER_H_
 
 // Qt headers
+#include <QString>
 #include <QRunnable>
 #include <QObject>
 #include <QMutex>
+#include <QMap>
 
 // MythTV headers
-#include "iptvchannelinfo.h"
+#include "iptvtuningdata.h"
 #include "mthread.h"
 
 class ScanMonitor;
 class IPTVChannelFetcher;
+
+class IPTVChannelInfo
+{
+  public:
+    IPTVChannelInfo() {}
+    IPTVChannelInfo(const QString &name,
+                    const QString &xmltvid,
+                    const QString &data_url,
+                    uint data_bitrate,
+                    const QString &fec_type,
+                    const QString &fec_url0,
+                    uint fec_bitrate0,
+                    const QString &fec_url1,
+                    uint fec_bitrate1) :
+        m_name(name), m_xmltvid(xmltvid),
+        m_tuning(data_url, data_bitrate,
+                 fec_type, fec_url0, fec_bitrate0, fec_url1, fec_bitrate1)
+    {
+    }
+
+    bool IsValid(void) const
+    {
+        return !m_name.isEmpty() && !m_tuning.IsValid();
+    }
+
+  public:
+    QString m_name;
+    QString m_xmltvid;
+    IPTVTuningData m_tuning;
+};
+typedef QMap<QString,IPTVChannelInfo> fbox_chan_map_t;
 
 class IPTVChannelFetcher : public QRunnable
 {
@@ -20,7 +58,7 @@ class IPTVChannelFetcher : public QRunnable
                        ScanMonitor *monitor = NULL);
     ~IPTVChannelFetcher();
 
-    bool Scan(void);
+    void Scan(void);
     void Stop(void);
 
     static QString DownloadPlaylist(const QString &url, bool inQtThread);

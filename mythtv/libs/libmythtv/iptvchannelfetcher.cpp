@@ -38,7 +38,8 @@ IPTVChannelFetcher::IPTVChannelFetcher(
     _stop_now(false),      _thread(new MThread("IPTVChannelFetcher", this)),
     _lock()
 {
-    _inputname.detach();
+    LOG(VB_CHANNEL, LOG_INFO, LOC + QString("Has ScanMonitor %1")
+        .arg(monitor?"true":"false"));
 }
 
 IPTVChannelFetcher::~IPTVChannelFetcher()
@@ -68,26 +69,12 @@ void IPTVChannelFetcher::Stop(void)
     _thread->wait();
 }
 
-/** \fn IPTVChannelFetcher::Scan(void)
- *  \brief Scans the given frequency list, blocking call.
- */
-bool IPTVChannelFetcher::Scan(void)
+/// \brief Scans the given frequency list.
+void IPTVChannelFetcher::Scan(void)
 {
-    _lock.lock();
-    do { _lock.unlock(); Stop(); _lock.lock(); } while (_thread_running);
-
-    // Should now have _lock and no thread should be running.
-
+    Stop();
     _stop_now = false;
-
     _thread->start();
-
-    while (!_thread_running && !_stop_now)
-        usleep(5000);
-
-    _lock.unlock();
-
-    return _thread_running;
 }
 
 void IPTVChannelFetcher::run(void)
@@ -99,6 +86,7 @@ void IPTVChannelFetcher::run(void)
 
     if (_stop_now || url.isEmpty())
     {
+        LOG(VB_CHANNEL, LOG_INFO, "Playlist URL was empty");
         _thread_running = false;
         _stop_now = true;
         return;
@@ -135,6 +123,10 @@ void IPTVChannelFetcher::run(void)
     if (_scan_monitor)
         _scan_monitor->ScanAppendTextToLog(QObject::tr("Adding Channels"));
     SetTotalNumChannels(channels.size());
+
+    LOG(VB_CHANNEL, LOG_INFO, QString("Found %1 channels")
+        .arg(channels.size()));
+
     fbox_chan_map_t::const_iterator it = channels.begin();
     for (uint i = 1; it != channels.end(); ++it, ++i)
     {
@@ -142,6 +134,9 @@ void IPTVChannelFetcher::run(void)
         QString name    = (*it).m_name;
         QString xmltvid = (*it).m_xmltvid.isEmpty() ? "" : (*it).m_xmltvid;
         QString msg = QObject::tr("Channel #%1 : %2").arg(channum).arg(name);
+
+        LOG(VB_CHANNEL, LOG_INFO, QString("Handling channel %1 %2")
+            .arg(channum).arg(name));
 
         int chanid = ChannelUtil::GetChanID(_sourceid, channum);
         if (chanid <= 0)
@@ -156,6 +151,7 @@ void IPTVChannelFetcher::run(void)
                 0, _sourceid, chanid, name, name, channum,
                 0, 0, 0, false, false, false, QString::null,
                 QString::null, "Default", xmltvid);
+            ChannelUtil::CreateIPTVTuningData(chanid, (*it).m_tuning);
         }
         else
         {
@@ -168,6 +164,7 @@ void IPTVChannelFetcher::run(void)
                 0, _sourceid, chanid, name, name, channum,
                 0, 0, 0, false, false, false, QString::null,
                 QString::null, "Default", xmltvid);
+            ChannelUtil::UpdateIPTVTuningData(chanid, (*it).m_tuning);
         }
 
         SetNumChannelsInserted(i);
@@ -315,7 +312,8 @@ fbox_chan_map_t IPTVChannelFetcher::ParsePlaylist(
             chanmap[channum] = info;
 
             msg = QObject::tr("Parsing Channel #%1 : %2 : %3")
-                .arg(channum).arg(info.m_name).arg(info.m_url);
+                .arg(channum).arg(info.m_name)
+                .arg(info.m_tuning.GetDataURL().toString());
             LOG(VB_CHANNEL, LOG_INFO, msg);
 
             msg = QString::null; // don't tell fetcher
@@ -339,11 +337,19 @@ static bool parse_chan_info(const QString   &rawdata,
 {
     // #EXTINF:0,2 - France 2                <-- duration,channum - channame
     // #EXTMYTHTV:xmltvid=C2.telepoche.com   <-- optional line (myth specific)
+    // #EXTMYTHTV:bitrate=BITRATE            <-- optional line (myth specific)
+    // #EXTMYTHTV:fectype=FECTYPE            <-- optional line (myth specific)
+    //     The FECTYPE can be rfc2733, rfc5109, or smpte2022
+    // #EXTMYTHTV:fecurl0=URL                <-- optional line (myth specific)
+    // #EXTMYTHTV:fecurl1=URL                <-- optional line (myth specific)
+    // #EXTMYTHTV:fecbitrate0=BITRATE        <-- optional line (myth specific)
+    // #EXTMYTHTV:fecbitrate1=BITRATE        <-- optional line (myth specific)
     // #...                                  <-- ignored comments
     // rtsp://maiptv.iptv.fr/iptvtv/201 <-- url
 
     QString name;
-    QString xmltvid;
+    QMap<QString,QString> values;
+
     while (true)
     {
         QString line = rawdata.section("\n", lineNum, lineNum);
@@ -359,25 +365,31 @@ static bool parse_chan_info(const QString   &rawdata,
             }
             else if (line.startsWith("#EXTMYTHTV:"))
             {
-                QString data = line.mid(line.indexOf(':')+1);
-                if (data.startsWith("xmltvid="))
-                {
-                    xmltvid = data.mid(data.indexOf('=')+1);
-                }
+                QString data = line.mid(line.indexOf(':'));
+                QString key = data.left(data.indexOf('='));
+                if (!key.isEmpty())
+                    values[key] = data.mid(data.indexOf('=')+1);
             }
-            else
-            {
-                // Just ignore other comments
-            }
+            continue;
         }
-        else
+
+        if (name.isEmpty())
+            return false;
+
+        QMap<QString,QString>::const_iterator it = values.begin();
+        for (; it != values.end(); ++it)
         {
-            if (name.isEmpty())
-                return false;
-            QString url = line;
-            info = IPTVChannelInfo(name, url, xmltvid);
-            return true;
+            LOG(VB_GENERAL, LOG_INFO,
+                QString("parse_chan_info [%1]='%2'")
+                .arg(it.key()).arg(*it));
         }
+        info = IPTVChannelInfo(
+            name, values["xmltvid"],
+            line, values["bitrate"].toUInt(),
+            values["fectype"],
+            values["fecurl0"], values["fecbitrate0"].toUInt(),
+            values["fecurl1"], values["fecbitrate1"].toUInt());
+        return true;
     }
 }
 
@@ -409,13 +421,13 @@ static bool parse_extinf(const QString &line1,
     channum = line1.mid(oldpos, pos - oldpos);
 
     // Parse iptv channel name
-    pos = line1.indexOf("- ", pos + 1);
+   // pos = line1.indexOf("- ", pos + 1);
     if (pos < 0)
     {
         LOG(VB_GENERAL, LOG_ERR, msg);
         return false;
     }
-    name = line1.mid(pos + 2, line1.length());
+    name = line1.mid(pos + 1, line1.length());
 
     return true;
 }

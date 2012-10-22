@@ -1,60 +1,54 @@
 /** -*- Mode: c++ -*-
  *  IPTVChannel
- *  Copyright (c) 2006 by Laurent Arnal, Benjamin Lerman & Mickaël Remars
+ *  Copyright (c) 2006-2009 Silicondust Engineering Ltd, and
+ *                          Daniel Thor Kristjansson
+ *  Copyright (c) 2012 Digital Nirvana, Inc.
  *  Distributed as part of MythTV under GPL v2 and later.
  */
 
 #ifndef _IPTV_CHANNEL_H_
 #define _IPTV_CHANNEL_H_
 
-#include <QString>
+// Qt headers
 #include <QMutex>
 
+// MythTV headers
 #include "dtvchannel.h"
-#include "iptvchannelinfo.h"
 
-class IPTVFeederWrapper;
+class IPTVStreamHandler;
+class IPTVTuningData;
+class IPTVRecorder;
 
 class IPTVChannel : public DTVChannel
 {
-    friend class IPTVSignalMonitor;
-    friend class IPTVRecorder;
-
   public:
-    IPTVChannel(TVRec *parent, const QString &videodev);
+    IPTVChannel(TVRec*, const QString&);
     ~IPTVChannel();
 
     // Commands
-    bool Open(void);
-    void Close(void);
-    bool SetChannelByString(const QString &channum);
+    virtual bool Open(void);
+    virtual void Close(void); 
+
+    virtual bool Tune(const IPTVTuningData&);
+    virtual bool Tune(const QString &freqid, int finetune) { return false; }
+    virtual bool Tune(const DTVMultiplex&, QString) { return false; }
+
+    // Sets
+    void SetStreamData(MPEGStreamData*);
 
     // Gets
     bool IsOpen(void) const;
-
-    // Channel scanning stuff
-    bool Tune(const DTVMultiplex&, QString) { return true; }
+    virtual bool IsIPTV(void) const { return true; } // DTVChannel
 
   private:
-    IPTVChannelInfo GetCurrentChanInfo(void) const
-        { return GetChanInfo(m_curchannelname); }
-
-    IPTVFeederWrapper       *GetFeeder(void)       { return m_feeder; }
-    const IPTVFeederWrapper *GetFeeder(void) const { return m_feeder; }
-
-    IPTVChannelInfo GetChanInfo(
-        const QString &channum, uint sourceid = 0) const;
+    void SetStreamDataInternal(MPEGStreamData*);
 
   private:
-    QString               m_videodev;
-    fbox_chan_map_t       m_freeboxchannels;
-    IPTVFeederWrapper    *m_feeder;
-    mutable QMutex        m_lock;
-
-  private:
-    IPTVChannel &operator=(const IPTVChannel&); //< avoid default impl
-    IPTVChannel(const IPTVChannel&);            //< avoid default impl
-    IPTVChannel();                              //< avoid default impl
+    mutable QMutex m_lock;
+    volatile bool m_open;
+    IPTVTuningData m_last_tuning;
+    IPTVStreamHandler *m_stream_handler;
+    MPEGStreamData *m_stream_data;
 };
 
 #endif // _IPTV_CHANNEL_H_
