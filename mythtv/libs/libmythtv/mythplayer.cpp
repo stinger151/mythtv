@@ -129,7 +129,7 @@ static int toTrackType(int type)
     if (kDisplayTeletextCaptions == type) return kTrackTypeTeletextCaptions;
     if (kDisplayTextSubtitle == type)     return kTrackTypeTextSubtitle;
     if (kDisplayRawTextSubtitle == type)  return kTrackTypeRawText;
-    return 0;
+    return kTrackTypeUnknown;
 }
 
 MythPlayer::MythPlayer(PlayerFlags flags)
@@ -243,7 +243,6 @@ MythPlayer::MythPlayer(PlayerFlags flags)
     endExitPrompt      = gCoreContext->GetNumSetting("EndOfRecordingExitPrompt");
     pip_default_loc    = (PIPLocation)gCoreContext->GetNumSetting("PIPLocation", kPIPTopLeft);
     tc_wrap[TC_AUDIO]  = gCoreContext->GetNumSetting("AudioSyncOffset", 0);
-    allowForcedSubtitles = gCoreContext->GetNumSetting("AllowForcedSubtitles", 1);
 
     // Get VBI page number
     QString mypage = gCoreContext->GetSetting("VBIpageNr", "888");
@@ -813,6 +812,8 @@ void MythPlayer::SetVideoParams(int width, int height, double fps,
 
     video_dim      = QSize((width + 15) & ~0xf, (height + 15) & ~0xf);
     video_disp_dim = QSize(width, height);
+    if (height)
+        video_aspect = (float)width / height;
 
     if (fps > 0.0f && fps < 121.0f)
     {
@@ -1577,11 +1578,6 @@ void MythPlayer::SetAllowForcedSubtitles(bool allow)
                       tr("Forced Subtitles On") :
                       tr("Forced Subtitles Off"),
                   kOSDTimeout_Med);
-    if (old != allowForcedSubtitles)
-    {
-        gCoreContext->SaveSetting("AllowForcedSubtitles",
-                                  allowForcedSubtitles);
-    }
 }
 
 void MythPlayer::DoDisableForcedSubtitles(void)
@@ -2266,7 +2262,32 @@ void MythPlayer::VideoStart(void)
         }
 #endif // USING_MHEG
 
-        SetCaptionsEnabled(captionsEnabledbyDefault, false);
+        // If there is a forced text subtitle track (which is possible
+        // in e.g. a .mkv container), and forced subtitles are
+        // allowed, then start playback with that subtitle track
+        // selected.  Otherwise, use the frontend settings to decide
+        // which captions/subtitles (if any) to enable at startup.
+        // TODO: modify the fix to #10735 to use this approach
+        // instead.
+        bool hasForcedTextTrack = false;
+        uint forcedTrackNumber = 0;
+        if (GetAllowForcedSubtitles())
+        {
+            uint numTextTracks = decoder->GetTrackCount(kTrackTypeRawText);
+            for (uint i = 0; !hasForcedTextTrack && i < numTextTracks; ++i)
+            {
+                if (decoder->GetTrackInfo(kTrackTypeRawText, i).forced)
+                {
+                    hasForcedTextTrack = true;
+                    forcedTrackNumber = i;
+                }
+            }
+        }
+        if (hasForcedTextTrack)
+            SetTrack(kTrackTypeRawText, forcedTrackNumber);
+        else
+            SetCaptionsEnabled(captionsEnabledbyDefault, false);
+
         osdLock.unlock();
     }
 
