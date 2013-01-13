@@ -799,8 +799,7 @@ int Transcode::TranscodeFile(const QString &inputname,
             // through a cut, and then use the cutter to
             // discard the rest
             cutter = new Cutter();
-            cutter->SetCutList(deleteMap);
-
+            cutter->SetCutList(deleteMap, ctx);
             GetPlayer()->SetCutList(cutter->AdjustedCutList());
         }
         else
@@ -842,22 +841,22 @@ int Transcode::TranscodeFile(const QString &inputname,
 
         switch(aplayer->GetCodec())
         {
-            case CODEC_ID_AC3:
+            case AV_CODEC_ID_AC3:
                 audio_codec_name = "ac3";
                 break;
-            case CODEC_ID_EAC3:
+            case AV_CODEC_ID_EAC3:
                 audio_codec_name = "eac3";
                 break;
-            case CODEC_ID_DTS:
+            case AV_CODEC_ID_DTS:
                 audio_codec_name = "dts";
                 break;
-            case CODEC_ID_TRUEHD:
+            case AV_CODEC_ID_TRUEHD:
                 audio_codec_name = "truehd";
                 break;
-            case CODEC_ID_MP3:
+            case AV_CODEC_ID_MP3:
                 audio_codec_name = "mp3";
                 break;
-            case CODEC_ID_MP2:
+            case AV_CODEC_ID_MP2:
                 audio_codec_name = "mp2";
                 break;
             default:
@@ -1473,6 +1472,7 @@ int Transcode::TranscodeFile(const QString &inputname,
             m_proginfo->ClearPositionMap(MARK_KEYFRAME);
             m_proginfo->ClearPositionMap(MARK_GOP_START);
             m_proginfo->ClearPositionMap(MARK_GOP_BYFRAME);
+            m_proginfo->ClearPositionMap(MARK_DURATION_MS);
         }
 
         if (nvr)

@@ -65,71 +65,6 @@ static QString chooseCD(void)
     return MediaMonitor::defaultCDdevice();
 }
 
-static void SavePending(int pending)
-{
-    //  Temporary Hack until mythmusic
-    //  has a proper settings/setup
-
-    MSqlQuery query(MSqlQuery::InitCon());
-    query.prepare("SELECT * FROM settings "
-                  "WHERE value = :LASTPUSH "
-                  "AND hostname = :HOST ;");
-    query.bindValue(":LASTPUSH", "LastMusicPlaylistPush");
-    query.bindValue(":HOST", gCoreContext->GetHostName());
-
-    if (query.exec() && query.size() == 0)
-    {
-        //  first run from this host / recent version
-        query.prepare("INSERT INTO settings (value,data,hostname) VALUES "
-                         "(:LASTPUSH, :DATA, :HOST );");
-        query.bindValue(":LASTPUSH", "LastMusicPlaylistPush");
-        query.bindValue(":DATA", pending);
-        query.bindValue(":HOST", gCoreContext->GetHostName());
-
-        if (!query.exec())
-            MythDB::DBError("SavePending - inserting LastMusicPlaylistPush",
-                            query);
-    }
-    else if (query.size() == 1)
-    {
-        //  ah, just right
-        query.prepare("UPDATE settings SET data = :DATA "
-                         "WHERE value = :LASTPUSH "
-                         "AND hostname = :HOST ;");
-        query.bindValue(":DATA", pending);
-        query.bindValue(":LASTPUSH", "LastMusicPlaylistPush");
-        query.bindValue(":HOST", gCoreContext->GetHostName());
-
-        if (!query.exec())
-            MythDB::DBError("SavePending - updating LastMusicPlaylistPush",
-                            query);
-    }
-    else
-    {
-        //  correct thor's diabolical plot to
-        //  consume all table space
-
-        query.prepare("DELETE FROM settings WHERE "
-                         "WHERE value = :LASTPUSH "
-                         "AND hostname = :HOST ;");
-        query.bindValue(":LASTPUSH", "LastMusicPlaylistPush");
-        query.bindValue(":HOST", gCoreContext->GetHostName());
-        if (!query.exec())
-            MythDB::DBError("SavePending - deleting LastMusicPlaylistPush",
-                            query);
-
-        query.prepare("INSERT INTO settings (value,data,hostname) VALUES "
-                         "(:LASTPUSH, :DATA, :HOST );");
-        query.bindValue(":LASTPUSH", "LastMusicPlaylistPush");
-        query.bindValue(":DATA", pending);
-        query.bindValue(":HOST", gCoreContext->GetHostName());
-
-        if (!query.exec())
-            MythDB::DBError("SavePending - inserting LastMusicPlaylistPush (2)",
-                            query);
-    }
-}
-
 static void loadMusic()
 {
     // only do this once
@@ -154,8 +89,6 @@ static void loadMusic()
         startdir += "/";
 
     gMusicData->musicDir = startdir;
-
-    Decoder::SetLocationFormatUseTags();
 
     // Only search music files if a directory was specified & there
     // is no data in the database yet (first run).  Otherwise, user
@@ -183,8 +116,7 @@ static void loadMusic()
     AllMusic *all_music = new AllMusic();
 
     //  Load all playlists into RAM (once!)
-    PlaylistContainer *all_playlists = new PlaylistContainer(
-            all_music, gCoreContext->GetHostName());
+    PlaylistContainer *all_playlists = new PlaylistContainer(all_music);
 
     gMusicData->all_music = all_music;
     gMusicData->all_streams = new AllStream();
@@ -197,7 +129,6 @@ static void loadMusic()
         qApp->processEvents();
         usleep(50000);
     }
-    gMusicData->all_playlists->postLoad();
 
     gMusicData->all_streams->createPlaylist();
 
@@ -312,8 +243,6 @@ static void runScan(void)
     if (gMusicData->all_playlists && gMusicData->all_playlists->cleanOutThreads())
     {
         gMusicData->all_playlists->save();
-        int x = gMusicData->all_playlists->getPending();
-        SavePending(x);
     }
 
     // force a complete reload of the tracks and playlists
@@ -656,7 +585,7 @@ static void setupKeys(void)
 
 int mythplugin_init(const char *libversion)
 {
-    if (!gContext->TestPopupVersion("mythmusic", libversion,
+    if (!gCoreContext->TestPluginVersion("mythmusic", libversion,
                                     MYTH_BINARY_VERSION))
         return -1;
 
@@ -673,8 +602,6 @@ int mythplugin_init(const char *libversion)
 
     setupKeys();
 
-    Decoder::SetLocationFormatUseTags();
-
     gPlayer = new MusicPlayer(NULL, chooseCD());
     gMusicData = new MusicData();
 
@@ -689,8 +616,6 @@ int mythplugin_run(void)
 
 int mythplugin_config(void)
 {
-    Decoder::SetLocationFormatUseTags();
-
     return runMenu("music_settings.xml");
 }
 
@@ -708,8 +633,6 @@ void mythplugin_destroy(void)
     if (gMusicData->all_playlists && gMusicData->all_playlists->cleanOutThreads())
     {
         gMusicData->all_playlists->save();
-        int x = gMusicData->all_playlists->getPending();
-        SavePending(x);
     }
 
     delete gPlayer;

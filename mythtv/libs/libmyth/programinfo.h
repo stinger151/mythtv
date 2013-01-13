@@ -21,13 +21,16 @@
 
 /* If NUMPROGRAMLINES gets updated following files need
    updates and code changes:
-   mythplugins/mythweb/classes/MythBackend.php
-   mythplugins/mythweb/modules/tv/classes/Program.php
-   mythtv/bindings/perl/MythTV.pm
-   mythtv/bindings/perl/MythTV/Program.pm
-   mythtv/bindings/python/MythTV/MythData.py
+   mythweb/modules/tv/classes/Program.php (layout)
+   mythtv/bindings/perl/MythTV.pm (version number)
+   mythtv/bindings/perl/MythTV/Program.pm (layout)
+   mythtv/bindings/php/MythBackend.php (version number)
+   mythtv/bindings/php/MythTVProgram.php (layout)
+   mythtv/bindings/php/MythTVRecording.php (layout)
+   mythtv/bindings/python/MythTV/static.py (version number)
+   mythtv/bindings/python/MythTV/mythproto.py (layout)
 */
-#define NUMPROGRAMLINES 44
+#define NUMPROGRAMLINES 47
 
 class ProgramInfo;
 typedef AutoDeleteDeque<ProgramInfo*> ProgramList;
@@ -82,6 +85,7 @@ class MPUBLIC ProgramInfo
                 const QString &description,
                 uint season,
                 uint episode,
+                const QString &syndicatedepisode,
                 const QString &category,
 
                 uint chanid,
@@ -114,6 +118,9 @@ class MPUBLIC ProgramInfo
                 float stars,
 
                 uint year,
+                uint partnumber,
+                uint parttotal,
+
                 const QDate &originalAirDate,
                 const QDateTime &lastmodified,
 
@@ -167,6 +174,7 @@ class MPUBLIC ProgramInfo
     ProgramInfo(const QString &title,
                 const QString &subtitle,
                 const QString &description,
+                const QString &syndicatedepisode,
                 const QString &category,
 
                 uint chanid,
@@ -186,6 +194,8 @@ class MPUBLIC ProgramInfo
 
                 float stars,
                 uint year,
+                uint partnumber,
+                uint parttotal,
                 const QDate &originalAirDate,
                 RecStatusType recstatus,
                 uint recordid,
@@ -281,7 +291,6 @@ class MPUBLIC ProgramInfo
     bool IsSameProgram(const ProgramInfo &other) const;
     bool IsSameTimeslot(const ProgramInfo &other) const;
     bool IsSameProgramTimeslot(const ProgramInfo &other) const;//sched only
-    static int GetRecordingTypeRecPriority(RecordingType type);//sched only
     static bool UsingProgramIDAuthority(void)
     {
         return usingProgIDAuth;
@@ -426,6 +435,7 @@ class MPUBLIC ProgramInfo
     uint32_t GetProgramFlags(void)        const { return programflags; }
     ProgramInfoType GetProgramInfoType(void) const
         { return (ProgramInfoType)((programflags & FL_TYPEMASK) >> 16); }
+    bool IsGeneric(void) const;
     bool IsInUsePlaying(void)   const { return programflags & FL_INUSEPLAYING;}
     bool IsCommercialFree(void) const { return programflags & FL_CHANCOMMFREE;}
     bool HasCutlist(void)       const { return programflags & FL_CUTLIST;     }
@@ -641,6 +651,7 @@ class MPUBLIC ProgramInfo
     QString description;
     uint    season;
     uint    episode;
+    QString syndicatedepisode;
     QString category;
 
     int32_t recpriority;
@@ -690,6 +701,8 @@ class MPUBLIC ProgramInfo
     uint32_t programflags;    ///< ProgramFlag
     uint16_t properties;      ///< SubtitleType,VideoProperty,AudioProperty
     uint16_t year;
+    uint16_t partnumber;
+    uint16_t parttotal;
 
     int8_t recstatus;
     int8_t oldrecstatus;

@@ -76,7 +76,10 @@ void ChannelScanner::Teardown(void)
         channel = NULL;
     }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
     if (iptvScanner)
     {
         iptvScanner->Stop();
@@ -279,7 +282,6 @@ bool ChannelScanner::ImportM3U(
     (void) cardid;
     (void) inputname;
     (void) sourceid;
-    bool ok = false;
 
     if (!scanMonitor)
         scanMonitor = new ScanMonitor(this);
@@ -290,12 +292,16 @@ bool ChannelScanner::ImportM3U(
 
     MonitorProgress(false, false, false, false);
 
+<<<<<<< HEAD
 	iptvScanner->Scan();
 
     if (!ok)
         InformUser(tr("Error starting scan"));
+=======
+    iptvScanner->Scan();
+>>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
 
-    return ok;
+    return true;
 }
 
 void ChannelScanner::PreScanCommon(

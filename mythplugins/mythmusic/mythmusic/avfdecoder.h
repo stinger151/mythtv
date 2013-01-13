@@ -25,8 +25,6 @@ class avfDecoder : public Decoder
     void seek(double);
     void stop();
 
-    MetaIO *doCreateTagger(void);
-
   private:
     void run();
 
@@ -35,7 +33,7 @@ class avfDecoder : public Decoder
 
     bool inited, user_stop;
     int stat;
-    char *output_buf;
+    uint8_t *output_buf;
     ulong output_at;
 
     unsigned int bks, bksFrames, decodeBytes;

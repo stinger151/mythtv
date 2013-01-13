@@ -80,6 +80,7 @@ class MTV_PUBLIC RecordingInfo : public ProgramInfo
         const QString &description,
         uint season,
         uint episode,
+        const QString &syndicatedepisode,
         const QString &category,
 
         uint chanid,
@@ -94,6 +95,8 @@ class MTV_PUBLIC RecordingInfo : public ProgramInfo
         const QString &storagegroup,
 
         uint year,
+	uint partnumber,
+	uint parttotal,
 
         const QString &seriesid,
         const QString &programid,
@@ -217,7 +220,7 @@ class MTV_PUBLIC RecordingInfo : public ProgramInfo
     QString GetProgramRecordingProfile(void) const;
     void ApplyRecordStateChange(RecordingType newstate, bool save = true);
     void ApplyRecordRecPriorityChange(int);
-    void ToggleRecord(void);
+    void QuickRecord(void);
 
     // Used in determining start and end for RecordingQuality determination
     void SetDesiredStartTime(const QDateTime &dt) { desiredrecstartts = dt; }

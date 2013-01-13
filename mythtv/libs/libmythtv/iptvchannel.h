@@ -29,9 +29,15 @@ class IPTVChannel : public DTVChannel
     virtual bool Open(void);
     virtual void Close(void); 
 
+<<<<<<< HEAD
     virtual bool Tune(const IPTVTuningData&);
     virtual bool Tune(const QString &freqid, int finetune) { return false; }
     virtual bool Tune(const DTVMultiplex&, QString) { return false; }
+=======
+    // Channel scanning stuff
+    using DTVChannel::Tune;
+    bool Tune(const DTVMultiplex&, QString) { return true; }
+>>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
 
     // Sets
     void SetStreamData(MPEGStreamData*);

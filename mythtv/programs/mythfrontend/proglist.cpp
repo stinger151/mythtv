@@ -16,6 +16,7 @@ using namespace std;
 #include "mythdialogbox.h"
 #include "recordinginfo.h"
 #include "recordingrule.h"
+#include "channelinfo.h"
 #include "channelutil.h"
 #include "proglist.h"
 #include "mythdb.h"
@@ -454,6 +455,8 @@ void ProgLister::ShowChooseViewMenu(void)
                 case plStoredSearch: msg = QString("%1\n%2")
                     .arg(tr("Select a search stored from"))
                     .arg(tr("Custom Record")); break;
+                default: // silence warning
+                    break;
             }
 
             screen = new MythUISearchDialog(
@@ -474,12 +477,20 @@ void ProgLister::ShowChooseViewMenu(void)
                 (m_curView >= 0) ? m_viewList[m_curView] : QString());
             break;
         case plTime:
+        {
             QString message =  tr("Start search from date and time");
             int flags = (MythTimeInputDialog::kDay |
                          MythTimeInputDialog::kHours |
                          MythTimeInputDialog::kFutureDates);
             screen = new MythTimeInputDialog(popupStack, message, flags);
             connect_string = false;
+            break;
+        }
+        case plRecordid:
+        case plPreviouslyRecorded:
+        case plUnknown:
+        case plTitle:
+        case plSQLSearch:
             break;
     }
 
@@ -597,11 +608,7 @@ void ProgLister::RecordSelected(void)
 {
     ProgramInfo *pi = GetCurrent();
     if (pi)
-    {
-        RecordingInfo ri(*pi);
-        ri.ToggleRecord();
-        *pi = ri;
-    }
+        QuickRecord(pi);
 }
 
 void ProgLister::HandleClicked(void)
@@ -770,13 +777,13 @@ void ProgLister::FillViewList(const QString &view)
 
     if (m_type == plChannel) // list by channel
     {
-        DBChanList channels = ChannelUtil::GetChannels(
+        ChannelInfoList channels = ChannelUtil::GetChannels(
             0, true, "channum, chanid");
         ChannelUtil::SortChannels(channels, m_channelOrdering, true);
 
         for (uint i = 0; i < channels.size(); ++i)
         {
-            QString chantext = channels[i].GetFormatted(DBChannel::kChannelShort);
+            QString chantext = channels[i].GetFormatted(ChannelInfo::kChannelShort);
 
             m_viewList.push_back(QString::number(channels[i].chanid));
             m_viewTextList.push_back(chantext);
@@ -1036,9 +1043,9 @@ void ProgLister::FillViewList(const QString &view)
 
 class plCompare : binary_function<const ProgramInfo*, const ProgramInfo*, bool>
 {
-    public:
-        virtual bool operator()(const ProgramInfo *a, const ProgramInfo *b)
-            = 0;
+  public:
+    virtual bool operator()(const ProgramInfo*, const ProgramInfo*) = 0;
+    virtual ~plCompare() {}
 };
 
 class plTitleSort : public plCompare

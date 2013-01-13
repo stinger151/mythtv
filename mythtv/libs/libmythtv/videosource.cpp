@@ -31,6 +31,7 @@ using namespace std;
 #include "scanwizard.h"
 #include "cardutil.h"
 #include "sourceutil.h"
+#include "channelinfo.h"
 #include "channelutil.h"
 #include "frequencies.h"
 #include "diseqcsettings.h"
@@ -741,6 +742,11 @@ class VideoDevice : public PathSetting, public CaptureCardDBStorage
                               card, driver, false);
     };
 
+    void fillSelectionsFromDir(const QDir &dir, bool absPath = true)
+    {
+        fillSelectionsFromDir(dir, 0, 255, QString::null, QString::null, false);
+    }
+
     uint fillSelectionsFromDir(const QDir& dir,
                                uint minor_min, uint minor_max,
                                QString card, QString driver,
@@ -835,6 +841,11 @@ class VBIDevice : public PathSetting, public CaptureCardDBStorage
                 addSelection(getValue(),getValue(),true);
             }
         }
+    }
+
+    void fillSelectionsFromDir(const QDir &dir, bool absPath = true)
+    {
+        fillSelectionsFromDir(dir, QString::null, QString::null);
     }
 
     uint fillSelectionsFromDir(const QDir &dir, const QString &card,
@@ -1539,7 +1550,8 @@ class IPTVHost : public LineEditSetting, public CaptureCardDBStorage
     {
         setValue("http://mafreebox.freebox.fr/freeboxtv/playlist.m3u");
         setLabel(QObject::tr("M3U URL"));
-        setHelpText(QObject::tr("URL of M3U containing IPTV channel URLs."));
+        setHelpText(
+            QObject::tr("URL of M3U containing RTSP/RTP/UDP channel URLs."));
     }
 };
 
@@ -1980,16 +1992,7 @@ void CetonDeviceID::SetIP(const QString &ip)
     if (QRegExp(regexp).exactMatch(ip + "."))
     {
         _ip = ip;
-        setValue(QString("%1-%2.%3").arg(_ip).arg(_card).arg(_tuner));
-    }
-}
-
-void CetonDeviceID::SetCard(const QString &card)
-{
-    if (QRegExp("^(\\d|RTP)$").exactMatch(card))
-    {
-        _card = card;
-        setValue(QString("%1-%2.%3").arg(_ip).arg(_card).arg(_tuner));
+        setValue(QString("%1-RTP.%3").arg(_ip).arg(_tuner));
     }
 }
 
@@ -1998,7 +2001,7 @@ void CetonDeviceID::SetTuner(const QString &tuner)
     if (QRegExp("^\\d$").exactMatch(tuner))
     {
         _tuner = tuner;
-        setValue(QString("%1-%2.%3").arg(_ip).arg(_card).arg(_tuner));
+        setValue(QString("%1-RTP.%2").arg(_ip).arg(_tuner));
     }
 }
 
@@ -2014,13 +2017,11 @@ void CetonDeviceID::UpdateValues(void)
     if (newstyle.exactMatch(getValue()))
     {
         emit LoadedIP(newstyle.cap(1));
-        emit LoadedCard(newstyle.cap(2));
         emit LoadedTuner(newstyle.cap(3));
     }
 }
 
-CetonConfigurationGroup::CetonConfigurationGroup
-        (CaptureCard& a_parent) :
+CetonConfigurationGroup::CetonConfigurationGroup(CaptureCard& a_parent) :
     VerticalConfigurationGroup(false, true, false, false),
     parent(a_parent)
 {
@@ -2032,32 +2033,22 @@ CetonConfigurationGroup::CetonConfigurationGroup
     ip    = new CetonSetting(
         "IP Address",
         "IP Address of the Ceton device (192.168.200.1 by default)");
-    card  = new CetonSetting(
-        "Card Number",
-        "Number of the installed Ceton card. Use 0 if only 1 Ceton card is "
-        "installed in your system. Use the value RTP if this is a Ceton "
-        "card installed in a remote system");
     tuner = new CetonSetting(
         "Tuner",
         "Number of the tuner on the Ceton device (first tuner is number 0)");
 
     addChild(ip);
-    addChild(card);
     addChild(tuner);
     addChild(deviceid);
     addChild(desc);
 
     connect(ip,       SIGNAL(NewValue(const QString&)),
             deviceid, SLOT(  SetIP(const QString&)));
-    connect(card,     SIGNAL(NewValue(const QString&)),
-            deviceid, SLOT(  SetCard(const QString&)));
     connect(tuner,    SIGNAL(NewValue(const QString&)),
             deviceid, SLOT(  SetTuner(const QString&)));
 
     connect(deviceid, SIGNAL(LoadedIP(const QString&)),
             ip,       SLOT(  LoadValue(const QString&)));
-    connect(deviceid, SIGNAL(LoadedCard(const QString&)),
-            card,     SLOT(  LoadValue(const QString&)));
     connect(deviceid, SIGNAL(LoadedTuner(const QString&)),
             tuner,    SLOT(  LoadValue(const QString&)));
 
@@ -2497,7 +2488,7 @@ void CardType::fillSelections(SelectSetting* setting)
 #endif // USING_HDHOMERUN
 
 #ifdef USING_IPTV
-    setting->addSelection(QObject::tr("Network recorder"), "FREEBOX");
+    setting->addSelection(QObject::tr("IPTV recorder"), "FREEBOX");
 #endif // USING_IPTV
 
 #ifdef USING_ASI
@@ -2613,6 +2604,8 @@ class InputGroup : public TransComboBoxSetting
                 CardUtil::LinkInputGroup(inputid, new_groupid);
         }
     }
+
+    virtual void Save(QString /*destination*/) { Save(); }
 
   private:
     const CardInput &cardinput;
@@ -2767,7 +2760,7 @@ void StartingChannel::SetSourceID(const QString &sourceid)
     // Get the existing starting channel
     QString startChan = CardUtil::GetStartingChannel(getInputID());
 
-    DBChanList channels = ChannelUtil::GetAllChannels(sourceid.toUInt());
+    ChannelInfoList channels = ChannelUtil::GetAllChannels(sourceid.toUInt());
 
     if (channels.empty())
     {

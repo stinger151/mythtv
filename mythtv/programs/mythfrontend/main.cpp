@@ -441,19 +441,6 @@ static void startManaged(void)
         delete viewsched;
 }
 
-static void startProgramRecPriorities(void)
-{
-    MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
-
-    ProgramRecPriority *progRecPrior = new ProgramRecPriority(mainStack,
-                                                        "ProgramRecPriority");
-
-    if (progRecPrior->Create())
-        mainStack->AddScreen(progRecPrior);
-    else
-        delete progRecPrior;
-}
-
 static void startManageRecordingRules(void)
 {
     MythScreenStack *mainStack = GetMythMainWindow()->GetMainStack();
@@ -807,8 +794,6 @@ static void TVMenuCallback(void *data, QString &selection)
         startCustomEdit();
     else if (sel == "tv_fix_conflicts")
         startManaged();
-    else if (sel == "tv_set_recpriorities")
-        startProgramRecPriorities();
     else if (sel == "tv_manage_recording_rules")
         startManageRecordingRules();
     else if (sel == "tv_progfind")
@@ -1293,8 +1278,6 @@ static void InitJumpPoints(void)
      //    "", "", startSearch);
      REG_JUMPLOC(QT_TRANSLATE_NOOP("MythControls", "Manage Recordings / "
          "Fix Conflicts"), "", "", startManaged, "VIEWSCHEDULED");
-     REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Program Recording "
-         "Priorities"), "", "", startProgramRecPriorities);
      REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Manage Recording Rules"),
          "", "", startManageRecordingRules);
      REG_JUMP(QT_TRANSLATE_NOOP("MythControls", "Channel Recording "
@@ -1467,7 +1450,7 @@ int main(int argc, char **argv)
 
     CleanupGuard callCleanup(cleanup);
 
-#ifdef Q_WS_MACX
+#ifdef Q_OS_MAC
     // Without this, we can't set focus to any of the CheckBoxSetting, and most
     // of the MythPushButton widgets, and they don't use the themed background.
     QApplication::setDesktopSettingsAware(false);
@@ -1656,7 +1639,7 @@ int main(int argc, char **argv)
     setHttpProxy();
 
     pmanager = new MythPluginManager();
-    gContext->SetPluginManager(pmanager);
+    gCoreContext->SetPluginManager(pmanager);
 
     MediaMonitor *mon = MediaMonitor::GetMediaMonitor();
     if (mon)

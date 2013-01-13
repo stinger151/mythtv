@@ -9,6 +9,7 @@
 #include "serverpool.h"
 
 #include "audiooutput.h"
+#include "audiooutpututil.h"
 
 #include "mythraopdevice.h"
 #include "mythraopconnection.h"
@@ -615,33 +616,28 @@ uint32_t MythRAOPConnection::decodeAudioPacket(uint8_t type,
     tmp_pkt.size = len;
 
     uint32_t frames_added = 0;
+    uint8_t *samples = (uint8_t *)av_mallocz(AVCODEC_MAX_AUDIO_FRAME_SIZE);
     while (tmp_pkt.size > 0)
     {
-        uint8_t *samples = (uint8_t *)av_mallocz(AVCODEC_MAX_AUDIO_FRAME_SIZE);
-        AVFrame frame;
-        int got_frame = 0;
-
-        int ret = avcodec_decode_audio4(ctx, &frame, &got_frame, &tmp_pkt);
-
+        int data_size;
+        int ret = AudioOutputUtil::DecodeAudio(ctx, samples,
+                                               data_size, &tmp_pkt);
         if (ret < 0)
         {
             av_free(samples);
             return -1;
         }
 
-        if (got_frame)
+        if (data_size)
         {
-            // ALAC codec isn't planar
-            int data_size = av_samples_get_buffer_size(NULL, ctx->channels,
-                                                       frame.nb_samples,
-                                                       ctx->sample_fmt, 1);
-            memcpy(samples, frame.extended_data[0], data_size);
+            int num_samples = data_size /
+	      (ctx->channels * av_get_bytes_per_sample(ctx->sample_fmt));
 
-            frames_added += frame.nb_samples;
+            frames_added += num_samples;
             AudioData block;
             block.data    = samples;
             block.length  = data_size;
-            block.frames  = frame.nb_samples;
+            block.frames  = num_samples;
             dest->append(block);
         }
         tmp_pkt.data += ret;
@@ -931,90 +927,91 @@ void MythRAOPConnection::ProcessRequest(const QStringList &header,
     }
     *m_textStream << "RTSP/1.0 200 OK\r\n";
 
-    if (option == "OPTIONS")
+    if (tags.contains("Apple-Challenge"))
     {
-        if (tags.contains("Apple-Challenge"))
+        LOG(VB_GENERAL, LOG_DEBUG, LOC + QString("Received Apple-Challenge"));
+        
+        *m_textStream << "Apple-Response: ";
+        if (!LoadKey())
+            return;
+        int tosize = RSA_size(LoadKey());
+        uint8_t *to = new uint8_t[tosize];
+        
+        QByteArray challenge =
+        QByteArray::fromBase64(tags["Apple-Challenge"].toAscii());
+        int challenge_size = challenge.size();
+        if (challenge_size != 16)
         {
-            LOG(VB_GENERAL, LOG_DEBUG, LOC + QString("Received Apple-Challenge"));
-
-            *m_textStream << "Apple-Response: ";
-            if (!LoadKey())
-                return;
-            int tosize = RSA_size(LoadKey());
-            uint8_t *to = new uint8_t[tosize];
-
-            QByteArray challenge =
-                QByteArray::fromBase64(tags["Apple-Challenge"].toAscii());
-            int challenge_size = challenge.size();
-            if (challenge_size != 16)
+            LOG(VB_GENERAL, LOG_ERR, LOC +
+                QString("Decoded challenge size %1, expected 16")
+                .arg(challenge_size));
+            if (challenge_size > 16)
+                challenge_size = 16;
+        }
+        
+        int i = 0;
+        unsigned char from[38];
+        memcpy(from, challenge.constData(), challenge_size);
+        i += challenge_size;
+        if (m_socket->localAddress().protocol() ==
+            QAbstractSocket::IPv4Protocol)
+        {
+            uint32_t ip = m_socket->localAddress().toIPv4Address();
+            ip = qToBigEndian(ip);
+            memcpy(from + i, &ip, 4);
+            i += 4;
+        }
+        else if (m_socket->localAddress().protocol() ==
+                 QAbstractSocket::IPv6Protocol)
+        {
+            Q_IPV6ADDR ip = m_socket->localAddress().toIPv6Address();
+            if(memcmp(&ip,
+                      "\x00\x00\x00\x00" "\x00\x00\x00\x00" "\x00\x00\xff\xff",
+                      12) == 0)
             {
-                LOG(VB_GENERAL, LOG_ERR, LOC +
-                    QString("Decoded challenge size %1, expected 16")
-                    .arg(challenge_size));
-                if (challenge_size > 16)
-                    challenge_size = 16;
-            }
-
-            int i = 0;
-            unsigned char from[38];
-            memcpy(from, challenge.constData(), challenge_size);
-            i += challenge_size;
-            if (m_socket->localAddress().protocol() ==
-                QAbstractSocket::IPv4Protocol)
-            {
-                uint32_t ip = m_socket->localAddress().toIPv4Address();
-                ip = qToBigEndian(ip);
-                memcpy(from + i, &ip, 4);
+                memcpy(from + i, &ip[12], 4);
                 i += 4;
             }
-            else if (m_socket->localAddress().protocol() ==
-                     QAbstractSocket::IPv6Protocol)
+            else
             {
-                Q_IPV6ADDR ip = m_socket->localAddress().toIPv6Address();
-                if(memcmp(&ip,
-                          "\x00\x00\x00\x00" "\x00\x00\x00\x00" "\x00\x00\xff\xff",
-                          12) == 0)
-                {
-                    memcpy(from + i, &ip[12], 4);
-                    i += 4;
-                }
-                else
-                {
-                    memcpy(from + i, &ip, 16);
-                    i += 16;
-                }
+                memcpy(from + i, &ip, 16);
+                i += 16;
             }
-            memcpy(from + i, m_hardwareId.constData(), AIRPLAY_HARDWARE_ID_SIZE);
-            i += AIRPLAY_HARDWARE_ID_SIZE;
-
-            int pad = 32 - i;
-            if (pad > 0)
-            {
-                memset(from + i, 0, pad);
-                i += pad;
-            }
-
-            LOG(VB_GENERAL, LOG_DEBUG, LOC +
-                QString("Full base64 response: '%1' size %2")
-                .arg(QByteArray((const char *)from, i).toBase64().constData())
-                .arg(i));
-
-            RSA_private_encrypt(i, from, to, LoadKey(), RSA_PKCS1_PADDING);
-
-            QByteArray base64 = QByteArray((const char *)to, tosize).toBase64();
-            delete[] to;
-
-            for (int pos = base64.size() - 1; pos > 0; pos--)
-            {
-                if (base64[pos] == '=')
-                    base64[pos] = ' ';
-                else
-                    break;
-            }
-            LOG(VB_GENERAL, LOG_DEBUG, QString("tSize=%1 tLen=%2 tResponse=%3")
-                .arg(tosize).arg(base64.size()).arg(base64.constData()));
-            *m_textStream << base64.trimmed() << "\r\n";
         }
+        memcpy(from + i, m_hardwareId.constData(), AIRPLAY_HARDWARE_ID_SIZE);
+        i += AIRPLAY_HARDWARE_ID_SIZE;
+        
+        int pad = 32 - i;
+        if (pad > 0)
+        {
+            memset(from + i, 0, pad);
+            i += pad;
+        }
+        
+        LOG(VB_GENERAL, LOG_DEBUG, LOC +
+            QString("Full base64 response: '%1' size %2")
+            .arg(QByteArray((const char *)from, i).toBase64().constData())
+            .arg(i));
+        
+        RSA_private_encrypt(i, from, to, LoadKey(), RSA_PKCS1_PADDING);
+        
+        QByteArray base64 = QByteArray((const char *)to, tosize).toBase64();
+        delete[] to;
+        
+        for (int pos = base64.size() - 1; pos > 0; pos--)
+        {
+            if (base64[pos] == '=')
+                base64[pos] = ' ';
+            else
+                break;
+        }
+        LOG(VB_GENERAL, LOG_DEBUG, QString("tSize=%1 tLen=%2 tResponse=%3")
+            .arg(tosize).arg(base64.size()).arg(base64.constData()));
+        *m_textStream << base64.trimmed() << "\r\n";
+    }
+
+    if (option == "OPTIONS")
+    {
         *m_textStream << "Public: ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, "
             "TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET\r\n";
     }

@@ -104,7 +104,7 @@ void BackendSelection::Accept(MythUIButtonListItem *item)
             m_pConfig->SetValue(kDefaultUSN, m_USN);
             m_pConfig->Save();
         }
-        Close(kAcceptConfigure);
+        CloseWithDecision(kAcceptConfigure);
     }
 }
 
@@ -137,7 +137,7 @@ void BackendSelection::AddItem(DeviceLocation *dev)
         m_mutex.unlock();
 
         InfoMap infomap;
-        dev->GetDeviceDetail(infomap, true);
+        dev->GetDeviceDetail(infomap);
 
         // We only want the version number, not the library version info
         infomap["version"] = infomap["modelnumber"].section('.', 0, 1);
@@ -184,7 +184,7 @@ bool BackendSelection::ConnectBackend(DeviceLocation *dev)
 
     stat    = client.GetConnectionInfo(m_pinCode, m_DBparams, message);
 
-    QString backendName = dev->GetFriendlyName(true);
+    QString backendName = dev->GetFriendlyName();
 
     if (backendName == "<Unknown>")
         backendName = dev->m_sLocation;
@@ -227,7 +227,7 @@ bool BackendSelection::ConnectBackend(DeviceLocation *dev)
 
 void BackendSelection::Cancel(void)
 {
-    Close(kCancelConfigure);
+    CloseWithDecision(kCancelConfigure);
 }
 
 void BackendSelection::Load(void)
@@ -256,7 +256,7 @@ void BackendSelection::Init(void)
 
 void BackendSelection::Manual(void)
 {
-    Close(kManualConfigure);
+    CloseWithDecision(kManualConfigure);
 }
 
 void BackendSelection::RemoveItem(QString USN)
@@ -358,7 +358,12 @@ void BackendSelection::PromptForPassword(void)
         delete pwDialog;
 }
 
-void BackendSelection::Close(Decision d)
+void BackendSelection::Close(void)
+{
+    CloseWithDecision(kCancelConfigure);
+}
+
+void BackendSelection::CloseWithDecision(Decision d)
 {
     m_backendDecision = d;
 

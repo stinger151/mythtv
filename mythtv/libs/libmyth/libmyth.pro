@@ -9,6 +9,9 @@ DEFINES += MYTH_API
 
 
 QT += network xml sql script
+contains(QT_VERSION, ^5\\.[0-9]\\..*) {
+QT += widgets
+}
 
 QMAKE_CLEAN += $(TARGET) $(TARGETA) $(TARGETD) $(TARGET0) $(TARGET1) $(TARGET2)
 
@@ -23,7 +26,6 @@ HEADERS += langsettings.h
 HEADERS += mythconfigdialogs.h mythconfiggroups.h
 HEADERS += mythcontext.h mythdialogs.h
 HEADERS += mythevent.h mythexp.h mythmediamonitor.h
-HEADERS += mythplugin.h mythpluginapi.h
 HEADERS += mythwidgets.h mythwizard.h schemawizard.h
 HEADERS += output.h
 HEADERS += settings.h
@@ -52,7 +54,6 @@ SOURCES += langsettings.cpp
 SOURCES += mythconfigdialogs.cpp mythconfiggroups.cpp
 SOURCES += mythcontext.cpp mythdialogs.cpp
 SOURCES += mythmediamonitor.cpp
-SOURCES += mythplugin.cpp
 SOURCES += mythwidgets.cpp mythwizard.cpp schemawizard.cpp
 SOURCES += output.cpp
 SOURCES += settings.cpp
@@ -89,25 +90,27 @@ LIBS += -L../libmythservicecontracts -lmythservicecontracts-$${LIBVERSION}
 LIBS += -L../../external/FFmpeg/libavcodec -lmythavcodec
 LIBS += -L../../external/FFmpeg/libavutil  -lmythavutil
 LIBS += -L../../external/FFmpeg/libavformat  -lmythavformat
+LIBS += -L../../external/FFmpeg/libswresample -lmythswresample
 
 POST_TARGETDEPS += ../libmythsamplerate/libmythsamplerate-$${MYTH_LIB_EXT}
 POST_TARGETDEPS += ../libmythsoundtouch/libmythsoundtouch-$${MYTH_LIB_EXT}
 POST_TARGETDEPS += ../libmythfreesurround/libmythfreesurround-$${MYTH_LIB_EXT}
 POST_TARGETDEPS += ../../external/FFmpeg/libavcodec/$$avLibName(avcodec)
 POST_TARGETDEPS += ../../external/FFmpeg/libavutil/$$avLibName(avutil)
+POST_TARGETDEPS += ../../external/FFmpeg/libswresample/$$avLibName(swresample)
 
 # Install headers so that plugins can compile independently
 inc.path = $${PREFIX}/include/mythtv/
 inc.files  = dialogbox.h mythcontext.h
 inc.files += mythwidgets.h remotefile.h oldsettings.h volumecontrol.h
-inc.files += settings.h uitypes.h  mythplugin.h mythdialogs.h
+inc.files += settings.h uitypes.h mythdialogs.h
 inc.files += audio/audiooutput.h audio/audiosettings.h
-inc.files += audio/audiooutputsettings.h
+inc.files += audio/audiooutputsettings.h audio/audiooutpututil.h
 inc.files += audio/volumebase.h audio/eldutils.h
 inc.files += inetcomms.h mythwizard.h schemawizard.h
 inc.files += mythmediamonitor.h
 inc.files += visual.h output.h langsettings.h
-inc.files += mythexp.h mythpluginapi.h storagegroupeditor.h
+inc.files += mythexp.h storagegroupeditor.h
 inc.files += mythconfigdialogs.h mythconfiggroups.h
 inc.files += mythterminal.h       remoteutil.h
 inc.files += programinfo.h
@@ -142,7 +145,11 @@ using_pulse {
 unix:!cygwin {
     SOURCES += mediamonitor-unix.cpp
     HEADERS += mediamonitor-unix.h
-    using_qtdbus: CONFIG += qdbus
+    contains(QT_VERSION, ^5\\.[0-9]\\..*) {
+        using_qtdbus: QT += dbus
+    } else {
+        using_qtdbus: CONFIG += qdbus
+    }
 }
 
 linux:DEFINES += linux

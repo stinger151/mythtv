@@ -806,7 +806,7 @@ void TVRec::StartedRecording(RecordingInfo *curRec)
 }
 
 /** \brief If not a premature stop, adds program to history of recorded
- *         programs. If the recording type is kFindOneRecord this find
+ *         programs. If the recording type is kOneRecord this find
  *         is removed.
  *  \sa ProgramInfo::FinishedRecording(bool prematurestop)
  *  \param curRec RecordingInfo or recording to mark as done
@@ -918,6 +918,9 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
         PreviewGeneratorQueue::GetPreviewImage(*curRec, "");
     }
 
+    // store recording in recorded table
+    curRec->FinishedRecording(!is_good || (recgrp == "LiveTV"));
+
     // send out UPDATE_RECORDING_STATUS message
     if (recgrp != "LiveTV")
     {
@@ -929,9 +932,6 @@ void TVRec::FinishedRecording(RecordingInfo *curRec, RecordingQuality *recq)
                      .arg(curRec->GetRecordingEndTime(MythDate::ISODate)));
         gCoreContext->dispatch(me);
     }
-
-    // store recording in recorded table
-    curRec->FinishedRecording(!is_good || (recgrp == "LiveTV"));
 
     // send out REC_FINISHED message
     SendMythSystemRecEvent("REC_FINISHED", curRec);
@@ -2557,6 +2557,17 @@ bool TVRec::GetKeyframePositions(
     return false;
 }
 
+bool TVRec::GetKeyframeDurations(
+    int64_t start, int64_t end, frm_pos_map_t &map) const
+{
+    QMutexLocker lock(&stateChangeLock);
+
+    if (recorder)
+        return recorder->GetKeyframeDurations(start, end, map);
+
+    return false;
+}
+
 /** \fn TVRec::GetMaxBitrate(void) const
  *  \brief Returns the maximum bits per second this recorder can produce.
  *
@@ -2989,6 +3000,16 @@ QString TVRec::GetInput(void) const
     if (channel)
         return channel->GetCurrentInput();
     return QString::null;
+}
+
+/** \fn TVRec::GetSourceID(void) const
+ *  \brief Returns current source id.
+ */
+uint TVRec::GetSourceID(void) const
+{
+    if (channel)
+        return channel->GetCurrentSourceID();
+    return 0;
 }
 
 /** \fn TVRec::SetInput(QString, uint)
@@ -4209,7 +4230,7 @@ void TVRec::TuningRestartRecorder(void)
     // Some recorders unpause on Reset, others do not...
     recorder->Unpause();
 
-    if (pseudoLiveTVRecording)
+    if (pseudoLiveTVRecording && curRecording)
     {
         ProgramInfo *rcinfo1 = pseudoLiveTVRecording;
         QString msg1 = QString("Recording: %1 %2 %3 %4")
@@ -4466,7 +4487,8 @@ bool TVRec::CreateLiveTVRingBuffer(const QString & channum)
     QString        inputName;
     int            inputID = -1;
 
-    if (!channel->CheckChannel(channum, inputName))
+    if (!channel ||
+        !channel->CheckChannel(channum, inputName))
     {
         ChangeState(kState_None);
         return false;
@@ -4525,7 +4547,8 @@ bool TVRec::SwitchLiveTVRingBuffer(const QString & channum,
     QString        inputName;
     int            inputID = -1;
 
-    if (!channel->CheckChannel(channum, inputName))
+    if (!channel ||
+        !channel->CheckChannel(channum, inputName))
     {
         ChangeState(kState_None);
         return false;
