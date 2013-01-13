@@ -23,7 +23,8 @@ const int kDecoderProbeBufferSize = 256 * 1024;
 /// Track types
 typedef enum TrackTypes
 {
-    kTrackTypeAudio = 0,
+    kTrackTypeUnknown = 0,
+    kTrackTypeAudio,
     kTrackTypeVideo,
     kTrackTypeSubtitle,
     kTrackTypeCC608,
@@ -135,6 +136,7 @@ class DecoderBase
     virtual long long GetChapter(int chapter)             { return framesPlayed; }
     virtual bool DoRewind(long long desiredFrame, bool doflush = true);
     virtual bool DoFastForward(long long desiredFrame, bool doflush = true);
+    virtual void SetIdrOnlyKeyframes(bool value) { }
 
     float GetVideoAspect(void) const { return current_aspect; }
 
@@ -180,6 +182,8 @@ class DecoderBase
     void SetTranscoding(bool value) { transcoding = value; }
 
     bool IsErrored() const { return errored; }
+
+    bool HasPositionMap(void) const { return GetPositionMapSize(); }
 
     void SetWaitForChange(void);
     bool GetWaitForChange(void) const;

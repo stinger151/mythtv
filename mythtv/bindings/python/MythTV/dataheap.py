@@ -29,10 +29,14 @@ class Artwork( MutableString ):
     @property
     def data(self):
         try:
-            return self.parent[self.attr]
+            val = self.parent[self.attr]
         except:
             raise RuntimeError("Artwork property must be used through an " +\
                                "object, not independently.")
+        else:
+            if val is None:
+                return ''
+            return val
     @data.setter
     def data(self, value):
         try:
@@ -47,6 +51,14 @@ class Artwork( MutableString ):
         except:
             raise RuntimeError("Artwork property must be used through an " +\
                                "object, not independently.")
+
+    def __new__(cls, attr, parent=None, imagetype=None):
+        if (imagetype is None) and (attr not in cls._types):
+            # usage appears to be export from immutable UserString methods
+            # return a dumb string
+            return unicode.__new__(unicode, attr)
+        else:
+            return super(Artwork, cls).__new__(cls, attr, parent, imagetype)
 
     def __init__(self, attr, parent=None, imagetype=None):
         # replace standard MutableString init to not overwrite self.data

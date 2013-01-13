@@ -56,6 +56,13 @@ enum
 
 /* utility methods */
 
+static QString decoded_URI(QString uri)
+{
+    QByteArray ba   = uri.toAscii();
+    QUrl url        = QUrl::fromEncoded(ba);
+    return url.toString();
+}
+
 static QString relative_URI(QString &surl, QString &spath)
 {
     QUrl url  = QUrl(surl);
@@ -258,11 +265,18 @@ public:
             return RET_OK;
         QByteArray key;
         bool ret = downloadURL(m_psz_key_path, &key);
-        if (ret != RET_OK || key.size() != AES_BLOCK_SIZE)
+        if (!ret || key.size() != AES_BLOCK_SIZE)
         {
-            LOG(VB_PLAYBACK, LOG_ERR, LOC +
-                QString("The AES key loaded doesn't have the right size (%1)")
-                .arg(key.size()));
+            if (ret)
+            {
+                LOG(VB_PLAYBACK, LOG_ERR, LOC +
+                    QString("The AES key loaded doesn't have the right size (%1)")
+                    .arg(key.size()));
+            }
+            else
+            {
+                LOG(VB_PLAYBACK, LOG_ERR, LOC + "Failed to download AES key");
+            }
             return RET_ERROR;
         }
         AES_set_decrypt_key((const unsigned char*)key.constData(), 128, &m_aeskey);
@@ -302,7 +316,7 @@ public:
                m_data.size() - aeslen);
 
         // remove the PKCS#7 padding from the buffer
-        int pad = m_data[m_data.size()-1];
+        int pad = decrypted_data[m_data.size()-1];
         if (pad <= 0 || pad > AES_BLOCK_SIZE)
         {
             LOG(VB_PLAYBACK, LOG_ERR, LOC +
@@ -1974,10 +1988,11 @@ int HLSRingBuffer::ParseKey(HLSStream *hls, QString &line)
         }
 
         /* Url is between quotes, remove them */
-        hls->SetKeyPath(uri.remove(QChar(QLatin1Char('"'))));
+        QString url = decoded_URI(uri.remove(QChar(QLatin1Char('"'))));
+        hls->SetKeyPath(url);
 
         iv = ParseAttributes(line, "IV");
-        if (!hls->SetAESIV(iv))
+        if (!iv.isNull() && !hls->SetAESIV(iv))
         {
             LOG(VB_PLAYBACK, LOG_ERR, LOC + "invalid IV");
             err = RET_ERROR;
@@ -2161,7 +2176,8 @@ int HLSRingBuffer::ParseM3U8(const QByteArray *buffer, StreamsList *streams)
                 }
                 else
                 {
-                    HLSStream *hls = ParseStreamInformation(line, uri);
+                    QString url = decoded_URI(uri);
+                    HLSStream *hls = ParseStreamInformation(line, url);
                     if (hls)
                     {
                         /* Download playlist file from server */
@@ -2257,7 +2273,8 @@ int HLSRingBuffer::ParseM3U8(const QByteArray *buffer, StreamsList *streams)
                 err = ParseEndList(hls);
             else if (!line.startsWith(QLatin1String("#")) && !line.isEmpty())
             {
-                hls->AddSegment(segment_duration, title, line);
+                QString url = decoded_URI(line);
+                hls->AddSegment(segment_duration, title, url);
                 segment_duration = -1; /* reset duration */
                 title = "";
             }
