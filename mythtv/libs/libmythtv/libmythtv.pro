@@ -21,10 +21,6 @@ contains(INCLUDEPATH, /usr/local/include) {
 
 DEPENDPATH  += .
 DEPENDPATH  += ../libmyth ../libmyth/audio
-<<<<<<< HEAD
-DEPENDPATH  += ../libmythbase ../libmythhdhomerun
-DEPENDPATH  += ./dvbdev ./mpeg ./rtp ./channelscan ./visualisations
-=======
 DEPENDPATH  += ../libmythbase
 DEPENDPATH  += ../libmythdvdnav/
 DEPENDPATH  += ./mpeg ./channelscan ./visualisations
@@ -41,7 +37,7 @@ DEPENDPATH  += ../libmythlivemedia/liveMedia/include
 DEPENDPATH  += ../libmythlivemedia/liveMedia
 DEPENDPATH  += ../libmythlivemedia/UsageEnvironment/include
 DEPENDPATH  += ../libmythlivemedia/UsageEnvironment
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
+#>>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
 DEPENDPATH  += ../libmythbase ../libmythui
 DEPENDPATH  += ../libmythupnp
 DEPENDPATH  += ../libmythservicecontracts
@@ -611,25 +607,25 @@ using_backend {
         DEFINES += USING_FIREWIRE
     }
 
-<<<<<<< HEAD
-    # Support for MPEG2 TS streams (including FreeBox http://adsl.free.fr/)
+#<<<<<<< HEAD
+   # Support for MPEG2 TS streams (including FreeBox http://adsl.free.fr/)
    
-        HEADERS += iptvchannel.h              iptvrecorder.h
-    HEADERS += iptvsignalmonitor.h        iptvstreamhandler.h
+ #       HEADERS += iptvchannel.h              iptvrecorder.h
+  #  HEADERS += iptvsignalmonitor.h        iptvstreamhandler.h
     HEADERS += iptvchannelfetcher.h       iptvtuningdata.h
     HEADERS += iptvrtsp.h
-    HEADERS += udppacket.h                udppacketbuffer.h
-    HEADERS += packetbuffer.h             rtppacketbuffer.h
-    HEADERS += rtpdatapacket.h            rtpfecpacket.h
+   # HEADERS += udppacket.h                udppacketbuffer.h
+   # HEADERS += packetbuffer.h             rtppacketbuffer.h
+   # HEADERS += rtpdatapacket.h            rtpfecpacket.h
 
-    SOURCES += iptvchannel.cpp            iptvrecorder.cpp
-    SOURCES += iptvsignalmonitor.cpp      iptvstreamhandler.cpp
-    SOURCES += iptvchannelfetcher.cpp     iptvrtsp.cpp
-    SOURCES += packetbuffer.cpp           rtppacketbuffer.cpp
-    DEFINES += USING_IPTV
+    #SOURCES += iptvchannel.cpp            iptvrecorder.cpp
+    #SOURCES += iptvsignalmonitor.cpp      iptvstreamhandler.cpp
+#    SOURCES += iptvchannelfetcher.cpp     iptvrtsp.cpp
+    #SOURCES += packetbuffer.cpp           rtppacketbuffer.cpp
+   # DEFINES += USING_IPTV
 
     
-=======
+#=======
     # Support for RTP/UDP streams
     HEADERS += recorders/cetonrtsp.h
     HEADERS += recorders/iptvchannel.h
@@ -656,7 +652,7 @@ using_backend {
     SOURCES += recorders/rtp/rtppacketbuffer.cpp
 
     DEFINES += USING_IPTV
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
+#>>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
 
     # Support for HDHomeRun box
     using_hdhomerun {

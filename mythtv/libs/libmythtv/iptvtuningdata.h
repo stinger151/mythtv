@@ -74,13 +74,8 @@ class MTV_PUBLIC IPTVTuningData
     QString GetDeviceKey(void) const
     {
         const QUrl u = GetDataURL();
-<<<<<<< HEAD
         return QString("%1:%2:%3:%4")
                 .arg(u.host()).arg(u.userInfo()).arg(u.port()).toLower().arg(u.path().toLower());
-=======
-        return QString("%1:%2:%3")
-            .arg(u.host()).arg(u.userInfo()).arg(u.port()).toLower();
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
     }
 
     QString GetDeviceName(void) const

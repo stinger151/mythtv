@@ -16,13 +16,8 @@ using namespace std;
 // MythTV headers
 #include "mythtvexp.h"
 #include "dtvmultiplex.h"
-<<<<<<< HEAD
-#include "dbchannelinfo.h"
-=======
 #include "channelinfo.h"
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6
 #include "iptvtuningdata.h"
-
 class NetworkInformationTable;
 
 class pid_cache_item_t

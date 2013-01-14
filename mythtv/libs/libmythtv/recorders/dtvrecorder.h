@@ -50,11 +50,6 @@ class DTVRecorder :
     void Initialize(void) {;}
     int GetVideoFd(void) { return _stream_fd; }
 
-<<<<<<< HEAD:mythtv/libs/libmythtv/dtvrecorder.h
-    virtual void SetNextRecording(const RecordingInfo*, RingBuffer*);
-    virtual void SetStreamData(void);
-=======
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6:mythtv/libs/libmythtv/recorders/dtvrecorder.h
     virtual void SetStreamData(MPEGStreamData* sd);
     MPEGStreamData *GetStreamData(void) const { return _stream_data; }
 

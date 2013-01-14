@@ -97,11 +97,7 @@ class StreamHandler : protected MThread, public DeviceReaderCB
     /// At minimum this sets _running_desired, this may also send
     /// signals to anything that might be blocking the run() loop.
     /// \note: The _start_stop_lock must be held when this is called.
-<<<<<<< HEAD:mythtv/libs/libmythtv/streamhandler.h
-     void SetRunningDesired(bool desired);
-=======
     void SetRunningDesired(bool desired);
->>>>>>> fcf176db6e06928364f35f32aa022696fb19edf6:mythtv/libs/libmythtv/recorders/streamhandler.h
 
   protected:
     QString           _device;
