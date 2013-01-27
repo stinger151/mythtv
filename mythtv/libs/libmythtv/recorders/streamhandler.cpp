@@ -179,14 +179,7 @@ void StreamHandler::Start(void)
 
 void StreamHandler::Stop(void)
 {
-    QMutexLocker locker(&_start_stop_lock);
-
-    while (_running)
-    {
-        SetRunningDesired(false);
-        _running_state_changed.wait(&_start_stop_lock, 100);
-    }
-
+    SetRunningDesired(false);
     wait();
 }
 

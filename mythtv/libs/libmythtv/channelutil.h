@@ -18,6 +18,7 @@ using namespace std;
 #include "dtvmultiplex.h"
 #include "channelinfo.h"
 #include "iptvtuningdata.h"
+
 class NetworkInformationTable;
 
 class pid_cache_item_t

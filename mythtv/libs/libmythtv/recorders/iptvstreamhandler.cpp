@@ -195,8 +195,16 @@ void IPTVStreamHandler::run(void)
 
         m_sockets[i]->connectToHost(url.host().toAscii(), 3000);
                            m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
-                           m_sockets[i]->waitForBytesWritten(1000);
-
+                           m_sockets[i]->waitForBytesWritten(500);
+						   int xy=0;
+						 /*  while(m_sockets[i]->bytesAvailable() < 500&& xy <500)
+						   {
+						   xy++;
+						   LOG(VB_RECORD, LOG_DEBUG, LOC +
+                "Waiting for byte CE.");
+						   qDebug("waitingbytes");
+						   }
+*/
     }
     if (m_use_rtp_streaming)
         m_buffer = new RTPPacketBuffer(tuning.GetBitrate(0));
@@ -289,7 +297,7 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                       newFrame=tsFramequeue;
 
                     tsFramequeue.clear();
-
+			//qDebug("appended last queue");
                 }
 
                 PosFirst=newFrame.indexOf(baSyncByte);
@@ -311,14 +319,20 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                         {
                         remain=PosFirst;
                         }
+						
                         PosFirst= PosFirst+188;
 
                     }
                     else
                     {
-                        qDebug("resyncCE");
-
-                    PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
+                        qDebug("resyncCE dd");
+					qDebug()<<PosFirst;
+                    //#PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
+					tsFramequeue.clear();
+					newFrame.clear();
+					FrameOUT.clear();
+					
+					return;
                     }
 
 
