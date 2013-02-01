@@ -12652,7 +12652,6 @@ void TV::ShowOSDStopWatchingRecording(PlayerContext *ctx)
 
     QString message;
     QString videotype = QString::null;
-    QStringList options;
 
     if (StateIsLiveTV(GetState(ctx)))
         videotype = tr("Live TV");
