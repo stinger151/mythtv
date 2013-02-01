@@ -1884,6 +1884,7 @@ mplexid2=0;
 
     return true;
 }
+
 bool ChannelUtil::DeleteChannel(uint channel_id)
 {
     MSqlQuery query(MSqlQuery::InitCon());

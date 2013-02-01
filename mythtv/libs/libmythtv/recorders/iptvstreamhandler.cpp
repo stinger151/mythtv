@@ -26,7 +26,6 @@
 #include "mythlogging.h"
 #include "cetonrtsp.h"
 
-
 #define LOC QString("IPTVSH(%1): ").arg(_device)
 
 QMap<QString,IPTVStreamHandler*> IPTVStreamHandler::s_handlers;
@@ -157,23 +156,13 @@ void IPTVStreamHandler::run(void)
             RunEpilog();
             return;
         }
-        ushort clientPort1 = 0, clientPort2 = 0;
-        if (!rtsp->Setup(clientPort1, clientPort2))
-        {
-            LOG(VB_RECORD, LOG_ERR, LOC +
-                "Set Up failed.. Aborting.");
-            delete rtsp;
-            SetRunning(false, false, false);
-            RunEpilog();
-            return;
-        }
 
         tuning = IPTVTuningData(
             QString("rtp://%1@%2:0")
             .arg(m_tuning.GetURL(0).host())
             .arg(QHostAddress(QHostAddress::Any).toString()), 0,
             IPTVTuningData::kNone,
-            QString("Da Drinrtp://%1@%2:0")
+            QString("rtp://%1@%2:0")
             .arg(m_tuning.GetURL(0).host())
             .arg(QHostAddress(QHostAddress::Any).toString()), 0,
             "", 0);
@@ -186,6 +175,7 @@ void IPTVStreamHandler::run(void)
             continue;
 
         m_sockets[i] = new QTcpSocket();
+		m_sockets[i]->setSocketOption(QAbstractSocket::LowDelayOption, 1);
         m_read_helpers[i] = new IPTVStreamHandlerReadHelper(
             this, m_sockets[i], i);
 
@@ -194,27 +184,32 @@ void IPTVStreamHandler::run(void)
             m_sender[i] = QHostAddress(url.userInfo());
 
         m_sockets[i]->connectToHost(url.host().toAscii(), 3000);
-                           m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
+ if (m_sockets[i]->waitForConnected(1000))
+   {
+ m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
                            m_sockets[i]->waitForBytesWritten(500);
-						   int xy=0;
-						 /*  while(m_sockets[i]->bytesAvailable() < 500&& xy <500)
-						   {
-						   xy++;
-						   LOG(VB_RECORD, LOG_DEBUG, LOC +
-                "Waiting for byte CE.");
-						   qDebug("waitingbytes");
-						   }
-*/
+                
+}
+else
+{
+  qDebug("not Connected!");
+    m_sockets[i]->connectToHost(url.host().toAscii(), 3000);
+m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
+                           m_sockets[i]->waitForBytesWritten(500);
+}
+                          
+						   
+						 
     }
-    if (m_use_rtp_streaming)
-        m_buffer = new RTPPacketBuffer(tuning.GetBitrate(0));
-    else
+    //if (m_use_rtp_streaming)
+      //  m_buffer = new RTPPacketBuffer(tuning.GetBitrate(0));
+    //else
         m_buffer = new UDPPacketBuffer(tuning.GetBitrate(0));
     m_write_helper = new IPTVStreamHandlerWriteHelper(this);
     m_write_helper->Start();
 
     bool error = false;
-    if (rtsp)
+    /*if (rtsp)
     {
         // Start Streaming
         if (!rtsp->Setup(m_sockets[0]->localPort(),
@@ -226,7 +221,7 @@ void IPTVStreamHandler::run(void)
             error = true;
         }
     }
-
+*/
     if (!error)
     {
         // Enter event loop

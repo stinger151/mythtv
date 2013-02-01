@@ -472,8 +472,7 @@ void RecorderBase::SavePositionMap(bool force)
     positionMapLock.lock();
 
     uint delta_size = positionMapDelta.size();
-    uint pm_elapsed = (positionMapTimer.isRunning()) ?
-        positionMapTimer.elapsed() : 0;
+    uint pm_elapsed = positionMapTimer.elapsed();
     // save on every 1.5 seconds if in the first few frames of a recording
     needToSave |= (positionMap.size() < 30) &&
         (delta_size >= 1) && (pm_elapsed >= 1500);
