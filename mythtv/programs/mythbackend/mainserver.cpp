@@ -2629,10 +2629,10 @@ void MainServer::DoHandleDeleteRecording(
     bool fileExists = checkFile.exists();
     if (!fileExists)
     {
-        QFile checkFileUTF8(QString::fromUtf8(filename.toAscii().constData()));
+        QFile checkFileUTF8(QString::fromUtf8(filename.toLatin1().constData()));
         fileExists = checkFileUTF8.exists();
         if (fileExists)
-            filename = QString::fromUtf8(filename.toAscii().constData());
+            filename = QString::fromUtf8(filename.toLatin1().constData());
     }
 
     // Allow deleting of files where the recording failed meaning size == 0
@@ -3365,7 +3365,7 @@ void MainServer::HandleSGGetFileList(QStringList &sList,
     if (slaveUnreachable)
         strList << "SLAVE UNREACHABLE: " << host;
 
-    if (strList.count() == 0 || (strList.at(0) == "0"))
+    if (strList.isEmpty() || (strList.at(0) == "0"))
         strList << "EMPTY LIST";
 
     SendResponse(pbssock, strList);
@@ -4491,7 +4491,7 @@ void MainServer::BackendQueryDiskSpace(QStringList &strlist, bool consolidated,
             {
                 if (checkDir.exists())
                 {
-                    QByteArray cdir = currentDir.toAscii();
+                    QByteArray cdir = currentDir.toLatin1();
                     getDiskSpace(cdir.constData(), totalKB, usedKB);
                     memset(&statbuf, 0, sizeof(statbuf));
                     localStr = "1"; // Assume local

@@ -179,7 +179,6 @@ void IPTVStreamHandler::run(void)
         m_read_helpers[i] = new IPTVStreamHandlerReadHelper(
             this, m_sockets[i], i);
 
-
         if (!url.userInfo().isEmpty())
             m_sender[i] = QHostAddress(url.userInfo());
 

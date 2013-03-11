@@ -356,11 +356,11 @@ static int score_match(const QString &a, const QString &b)
 
     QStringList al, bl;
     al = A.split(" ", QString::SkipEmptyParts);
-    if (!al.size())
+    if (al.isEmpty())
         return 0;
 
     bl = B.split(" ", QString::SkipEmptyParts);
-    if (!bl.size())
+    if (bl.isEmpty())
         return 0;
 
     // score words symmetrically
@@ -581,6 +581,22 @@ uint DBEvent::UpdateDB(
     {
         for (uint i = 0; i < credits->size(); i++)
             (*credits)[i].InsertDB(query, chanid, starttime);
+    }
+    
+    QList<EventRating>::const_iterator j = ratings.begin();
+    for (; j != ratings.end(); ++j)
+    {
+        query.prepare(
+            "INSERT INTO programrating "
+            "       ( chanid, starttime, system, rating) "
+            "VALUES (:CHANID, :START,    :SYS,  :RATING)");
+        query.bindValue(":CHANID", chanid);
+        query.bindValue(":START",  starttime);
+        query.bindValue(":SYS",    (*j).system);
+        query.bindValue(":RATING", (*j).rating);
+
+        if (!query.exec())
+            MythDB::DBError("programrating insert", query);
     }
 
     return 1;

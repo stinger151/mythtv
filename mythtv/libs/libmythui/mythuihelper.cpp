@@ -746,6 +746,7 @@ void MythUIHelper::ClearOldImageCache(void)
 
     dir.setPath(cachedirname);
 
+    dir.setFilter(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     QFileInfoList list = dir.entryInfoList();
 
     QFileInfoList::const_iterator it = list.begin();
@@ -755,9 +756,6 @@ void MythUIHelper::ClearOldImageCache(void)
     while (it != list.end())
     {
         fi = &(*it++);
-
-        if (fi->fileName() == "." || fi->fileName() == "..")
-            continue;
 
         if (fi->isDir() && !fi->isSymLink())
         {
@@ -805,6 +803,7 @@ void MythUIHelper::RemoveCacheDir(const QString &dirname)
     if (!dir.exists())
         return;
 
+    dir.setFilter(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
     QFileInfoList list = dir.entryInfoList();
     QFileInfoList::const_iterator it = list.begin();
     const QFileInfo *fi;
@@ -812,9 +811,6 @@ void MythUIHelper::RemoveCacheDir(const QString &dirname)
     while (it != list.end())
     {
         fi = &(*it++);
-
-        if (fi->fileName() == "." || fi->fileName() == "..")
-            continue;
 
         if (fi->isFile() && !fi->isSymLink())
         {
@@ -1602,7 +1598,7 @@ QFont MythUIHelper::GetSmallFont(void)
 
 void MythUIHelper::DisableScreensaver(void)
 {
-    if (QApplication::type() == QApplication::GuiClient)
+    if (qobject_cast<QApplication*>(qApp))
     {
         QCoreApplication::postEvent(
             GetMythMainWindow(),
@@ -1612,7 +1608,7 @@ void MythUIHelper::DisableScreensaver(void)
 
 void MythUIHelper::RestoreScreensaver(void)
 {
-    if (QApplication::type() == QApplication::GuiClient)
+    if (qobject_cast<QApplication*>(qApp))
     {
         QCoreApplication::postEvent(
             GetMythMainWindow(),
@@ -1622,7 +1618,7 @@ void MythUIHelper::RestoreScreensaver(void)
 
 void MythUIHelper::ResetScreensaver(void)
 {
-    if (QApplication::type() == QApplication::GuiClient)
+    if (qobject_cast<QApplication*>(qApp))
     {
         QCoreApplication::postEvent(
             GetMythMainWindow(),

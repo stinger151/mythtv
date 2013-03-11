@@ -39,13 +39,13 @@ QString MythRAOPConnection::g_rsaLastError;
 // anything lower than 50ms on windows, isn't reliable
 #define AUDIO_BUFFER     100
 
-class NetStream : public QTextStream
+class _NetStream : public QTextStream
 {
 public:
-    NetStream(QIODevice *device) : QTextStream(device)
+    _NetStream(QIODevice *device) : QTextStream(device)
     {
     };
-    NetStream &operator<<(const QString &str)
+    _NetStream &operator<<(const QString &str)
     {
         LOG(VB_GENERAL, LOG_DEBUG,
             LOC + QString("Sending(%1): ").arg(str.length()) + str);
@@ -178,7 +178,7 @@ void MythRAOPConnection::CleanUp(void)
 bool MythRAOPConnection::Init(void)
 {
     // connect up the request socket
-    m_textStream = new NetStream(m_socket);
+    m_textStream = new _NetStream(m_socket);
     m_textStream->setCodec("UTF-8");
     if (!connect(m_socket, SIGNAL(readyRead()), this, SLOT(readClient())))
     {
@@ -459,7 +459,7 @@ void MythRAOPConnection::SendResendRequest(uint64_t timestamp,
  */
 void MythRAOPConnection::ExpireResendRequests(uint64_t timestamp)
 {
-    if (!m_resends.size())
+    if (m_resends.isEmpty())
         return;
 
     QMutableMapIterator<uint16_t,uint64_t> it(m_resends);
@@ -938,7 +938,7 @@ void MythRAOPConnection::ProcessRequest(const QStringList &header,
         uint8_t *to = new uint8_t[tosize];
         
         QByteArray challenge =
-        QByteArray::fromBase64(tags["Apple-Challenge"].toAscii());
+        QByteArray::fromBase64(tags["Apple-Challenge"].toLatin1());
         int challenge_size = challenge.size();
         if (challenge_size != 16)
         {
@@ -1023,7 +1023,7 @@ void MythRAOPConnection::ProcessRequest(const QStringList &header,
             if (line.startsWith("a=rsaaeskey:"))
             {
                 QString key = line.mid(12).trimmed();
-                QByteArray decodedkey = QByteArray::fromBase64(key.toAscii());
+                QByteArray decodedkey = QByteArray::fromBase64(key.toLatin1());
                 LOG(VB_GENERAL, LOG_DEBUG, LOC +
                     QString("RSAAESKey: %1 (decoded size %2)")
                     .arg(key).arg(decodedkey.size()));
@@ -1053,7 +1053,7 @@ void MythRAOPConnection::ProcessRequest(const QStringList &header,
             else if (line.startsWith("a=aesiv:"))
             {
                 QString aesiv = line.mid(8).trimmed();
-                m_AESIV = QByteArray::fromBase64(aesiv.toAscii());
+                m_AESIV = QByteArray::fromBase64(aesiv.toLatin1());
                 LOG(VB_GENERAL, LOG_DEBUG, LOC +
                     QString("AESIV: %1 (decoded size %2)")
                     .arg(aesiv).arg(m_AESIV.size()));
@@ -1347,7 +1347,7 @@ void MythRAOPConnection::ProcessRequest(const QStringList &header,
     FinishResponse(m_textStream, m_socket, option, tags["CSeq"]);
 }
 
-void MythRAOPConnection::FinishAuthenticationResponse(NetStream *stream,
+void MythRAOPConnection::FinishAuthenticationResponse(_NetStream *stream,
                                                       QTcpSocket *socket,
                                                       QString &cseq)
 {
@@ -1365,7 +1365,7 @@ void MythRAOPConnection::FinishAuthenticationResponse(NetStream *stream,
         .arg(cseq).arg(socket->flush()));
 }
 
-void MythRAOPConnection::FinishResponse(NetStream *stream, QTcpSocket *socket,
+void MythRAOPConnection::FinishResponse(_NetStream *stream, QTcpSocket *socket,
                                         QString &option, QString &cseq)
 {
     if (!stream)
