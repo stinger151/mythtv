@@ -1441,12 +1441,12 @@ void MusicCommon::customEvent(QEvent *event)
             if (resulttext == tr("Replace Tracks"))
             {
                 m_playlistOptions.insertPLOption = PL_REPLACE;
-                doUpdatePlaylist();
+                doUpdatePlaylist(false);
             }
             else if (resulttext == tr("Add Tracks"))
             {
                 m_playlistOptions.insertPLOption = PL_INSERTATEND;
-                doUpdatePlaylist();
+                doUpdatePlaylist(false);
             }
         }
         else if (resultid == "visualizermenu")
@@ -1545,7 +1545,11 @@ void MusicCommon::customEvent(QEvent *event)
                 Metadata *mdata = qVariantValue<Metadata*> (item->GetData());
                 if (mdata && mdata->ID() == (Metadata::IdType) trackID)
                 {
-                    m_currentPlaylist->RemoveItem(item);
+                    // work around a bug in MythUIButtonlist not updating properly after removing the last item
+                    if (m_currentPlaylist->GetCount() == 1)
+                        m_currentPlaylist->Reset();
+                    else
+                        m_currentPlaylist->RemoveItem(item);
                     break;
                 }
             }
@@ -1565,6 +1569,9 @@ void MusicCommon::customEvent(QEvent *event)
                                           m_currentTrack, &m_playlistPlayedTime);
         updatePlaylistStats();
         updateTrackInfo(gPlayer->getCurrentMetadata());
+
+        if (m_noTracksText)
+            m_noTracksText->SetVisible((gPlayer->getPlaylist()->getSongs().count() == 0));
     }
     else if (event->type() == MusicPlayerEvent::TrackAddedEvent)
     {
@@ -1608,7 +1615,13 @@ void MusicCommon::customEvent(QEvent *event)
                         item->SetFontState("normal");
                         item->DisplayState("default", "playstate");
                     }
+
+                    if (!gPlayer->getCurrentMetadata())
+                        gPlayer->changeCurrentTrack(0);
                 }
+
+                if (m_noTracksText)
+                    m_noTracksText->SetVisible((gPlayer->getPlaylist()->getSongs().count() == 0));
             }
         }
 
@@ -2368,7 +2381,7 @@ void MusicCommon::showPlaylistOptionsMenu(bool addMainMenu)
     if (gPlayer->getPlaylist()->getSongs().count() == 0)
     {
         m_playlistOptions.insertPLOption = PL_REPLACE;
-        doUpdatePlaylist();
+        doUpdatePlaylist(true);
         return;
     }
 
@@ -2387,7 +2400,7 @@ void MusicCommon::showPlaylistOptionsMenu(bool addMainMenu)
         delete menu;
 }
 
-void MusicCommon::doUpdatePlaylist(void)
+void MusicCommon::doUpdatePlaylist(bool startPlayback)
 {
     int curTrackID, trackCount;
     int curPos = gPlayer->getCurrentTrackPos();
@@ -2420,46 +2433,90 @@ void MusicCommon::doUpdatePlaylist(void)
 
     updateUIPlaylist();
 
-    switch (m_playlistOptions.playPLOption)
+    if (startPlayback || gPlayer->isPlaying())
     {
-        case PL_CURRENT:
+        switch (m_playlistOptions.playPLOption)
         {
-            if (!restorePosition(curTrackID))
-                playFirstTrack();
-
-            break;
-        }
-
-        case PL_FIRST:
-            playFirstTrack();
-            break;
-
-        case PL_FIRSTNEW:
-        {
-            switch (m_playlistOptions.insertPLOption)
+            case PL_CURRENT:
             {
-                case PL_REPLACE:
+                if (!restorePosition(curTrackID))
                     playFirstTrack();
-                    break;
 
-                case PL_INSERTATEND:
-                {
-                    pause();
-                    if (!gPlayer->setCurrentTrackPos(trackCount + 1))
-                        playFirstTrack();
-                    break;
-                }
-
-                case PL_INSERTAFTERCURRENT:
-                    if (!gPlayer->setCurrentTrackPos(curPos + 1))
-                        playFirstTrack();
-                    break;
-
-                default:
-                    playFirstTrack();
+                break;
             }
 
-            break;
+            case PL_FIRST:
+                playFirstTrack();
+                break;
+
+            case PL_FIRSTNEW:
+            {
+                switch (m_playlistOptions.insertPLOption)
+                {
+                    case PL_REPLACE:
+                        playFirstTrack();
+                        break;
+
+                    case PL_INSERTATEND:
+                    {
+                        pause();
+                        if (!gPlayer->setCurrentTrackPos(trackCount))
+                            playFirstTrack();
+                        break;
+                    }
+
+                    case PL_INSERTAFTERCURRENT:
+                        if (!gPlayer->setCurrentTrackPos(curPos + 1))
+                            playFirstTrack();
+                        break;
+
+                    default:
+                        playFirstTrack();
+                }
+
+                break;
+            }
+        }
+    }
+    else
+    {
+        int trackPos = 0;
+
+        switch (m_playlistOptions.playPLOption)
+        {
+            case PL_CURRENT:
+                trackPos = curPos;
+                break;
+
+            case PL_FIRST:
+                trackPos = 0;
+                break;
+
+            case PL_FIRSTNEW:
+            {
+                switch (m_playlistOptions.insertPLOption)
+                {
+                    case PL_REPLACE:
+                        trackPos = 0;
+                        break;
+
+                    case PL_INSERTATEND:
+                        trackPos = 0;
+                        break;
+
+                    case PL_INSERTAFTERCURRENT:
+                        trackPos = curPos + 1;
+                        break;
+
+                    default:
+                        trackPos = 0;
+                }
+
+                break;
+            }
+
+            gPlayer->changeCurrentTrack(trackPos);
+            m_currentTrack = trackPos;
         }
     }
 
