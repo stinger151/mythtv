@@ -2170,9 +2170,7 @@ static ProgramInfoType discover_program_info_type(
     ProgramInfoType pit = kProgramInfoTypeVideoFile;
     if (chanid)
         pit = kProgramInfoTypeRecording;
-    else if (fn_lower.startsWith("http:"))
-        pit = kProgramInfoTypeVideoStreamingHTML;
-    else if (fn_lower.startsWith("rtsp:"))
+      else if (fn_lower.startsWith("http:"))
         pit = kProgramInfoTypeVideoStreamingRTSP;
     else
     {

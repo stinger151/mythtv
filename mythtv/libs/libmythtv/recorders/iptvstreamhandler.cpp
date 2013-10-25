@@ -13,7 +13,8 @@
 #endif
 
 // Qt headers
-#include <QUdpSocket>
+#include <QTcpSocket>
+#include <QQueue>
 
 // MythTV headers
 #include "iptvstreamhandler.h"
@@ -166,96 +167,30 @@ void IPTVStreamHandler::run(void)
             .arg(QHostAddress(QHostAddress::Any).toString()), 0,
             "", 0);
     }
-
+  LOG(VB_GENERAL, LOG_INFO, LOC + "pre for socket");
     for (uint i = 0; i < IPTV_SOCKET_COUNT; i++)
     {
         QUrl url = tuning.GetURL(i);
         if (url.port() < 0)
             continue;
 
-        m_sockets[i] = new QUdpSocket();
+        m_sockets[i] = new QTcpSocket();
         m_read_helpers[i] = new IPTVStreamHandlerReadHelper(
             this, m_sockets[i], i);
-
-        // we need to open the descriptor ourselves so we
-        // can set some socket options
-        int fd = socket(AF_INET, SOCK_DGRAM, 0); // create IPv4 socket
-        if (fd < 0)
-        {
-            LOG(VB_GENERAL, LOG_ERR, LOC +
-                "Unable to create socket " + ENO);
-            continue;
-        }
-        int buf_size = 2 * 1024 * max(tuning.GetBitrate(i)/1000, 500U);
-        if (!tuning.GetBitrate(i))
-            buf_size = 2 * 1024 * 1024;
-        int ok = setsockopt(fd, SOL_SOCKET, SO_RCVBUF,
-                            (char *)&buf_size, sizeof(buf_size));
-        if (ok)
-        {
-            LOG(VB_GENERAL, LOG_INFO, LOC +
-                QString("Increasing buffer size to %1 failed")
-                .arg(buf_size) + ENO);
-        }
-        /*
-          int broadcast = 1;
-          ok = setsockopt(fd, SOL_SOCKET, SO_BROADCAST,
-          (char *)&broadcast, sizeof(broadcast));
-          if (ok)
-          {
-          LOG(VB_GENERAL, LOG_INFO, LOC +
-          QString("Enabling broadcast failed") + ENO);
-          }
-        */
-        m_sockets[i]->setSocketDescriptor(
-            fd, QAbstractSocket::UnconnectedState, QIODevice::ReadOnly);
-
-        m_sockets[i]->bind(QHostAddress::Any, url.port());
-
-        QHostAddress dest_addr(tuning.GetURL(i).host());
-
-        if (dest_addr != QHostAddress::Any)
-        {
-            //m_sockets[i]->joinMulticastGroup(dest_addr); // needs Qt 4.8
-            LOG(VB_GENERAL, LOG_INFO, LOC + QString("Joining %1")
-                .arg(dest_addr.toString()));
-            struct ip_mreq imr;
-            memset(&imr, 0, sizeof(struct ip_mreq));
-            imr.imr_multiaddr.s_addr = inet_addr(
-                dest_addr.toString().toLatin1().constData());
-            imr.imr_interface.s_addr = htonl(INADDR_ANY);
-            if (setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                           &imr, sizeof(imr)) < 0)
-            {
-                LOG(VB_GENERAL, LOG_ERR, LOC +
-                    "setsockopt - IP_ADD_MEMBERSHIP " + ENO);
-            }
-        }
-
+       LOG(VB_GENERAL, LOG_INFO, LOC + "pre http GET");
         if (!url.userInfo().isEmpty())
             m_sender[i] = QHostAddress(url.userInfo());
-    }
-    if (m_use_rtp_streaming)
-        m_buffer = new RTPPacketBuffer(tuning.GetBitrate(0));
-    else
+			m_sockets[i]->connectToHost(url.host().toAscii(), 3000);	
+                           m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
+                           m_sockets[i]->waitForBytesWritten(1000);
+	 }
+    LOG(VB_GENERAL, LOG_INFO, LOC + "after socket count");
         m_buffer = new UDPPacketBuffer(tuning.GetBitrate(0));
     m_write_helper = new IPTVStreamHandlerWriteHelper(this);
     m_write_helper->Start();
-
+LOG(VB_GENERAL, LOG_INFO, LOC + "should be running");
     bool error = false;
-    if (rtsp)
-    {
-        // Start Streaming
-        if (!rtsp->Setup(m_sockets[0]->localPort(),
-                         m_sockets[1]->localPort()) ||
-            !rtsp->Play())
-        {
-            LOG(VB_RECORD, LOG_ERR, LOC +
-                "Starting recording (RTP initialization failed). Aborting.");
-            error = true;
-        }
-    }
-
+  
     if (!error)
     {
         // Enter event loop
@@ -289,7 +224,7 @@ void IPTVStreamHandler::run(void)
 }
 
 IPTVStreamHandlerReadHelper::IPTVStreamHandlerReadHelper(
-    IPTVStreamHandler *p, QUdpSocket *s, uint stream) :
+    IPTVStreamHandler *p, QTcpSocket *s, uint stream) :
     m_parent(p), m_socket(s), m_sender(p->m_sender[stream]),
     m_stream(stream)
 {
@@ -299,37 +234,134 @@ IPTVStreamHandlerReadHelper::IPTVStreamHandlerReadHelper(
 
 void IPTVStreamHandlerReadHelper::ReadPending(void)
 {
-    QHostAddress sender;
-    quint16 senderPort;
-    bool sender_null = m_sender.isNull();
+   
+  QByteArray baSyncByte;
+        baSyncByte.resize(1);
+        baSyncByte[0] = 0x47;
+        QHostAddress sender;
+    
+       bool sender_null = m_sender.isNull();
 
-    if (0 == m_stream)
-    {
-        while (m_socket->hasPendingDatagrams())
-        {
-            UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
-            QByteArray &data = packet.GetDataReference();
-            data.resize(m_socket->pendingDatagramSize());
-            m_socket->readDatagram(data.data(), data.size(),
-                                   &sender, &senderPort);
-            if (sender_null || sender == m_sender)
-                m_parent->m_buffer->PushDataPacket(packet);
-        }
-    }
-    else
-    {
-        while (m_socket->hasPendingDatagrams())
-        {
-            UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
-            QByteArray &data = packet.GetDataReference();
-            data.resize(m_socket->pendingDatagramSize());
-            m_socket->readDatagram(data.data(), data.size(),
-                                   &sender, &senderPort);
-            if (sender_null || sender == m_sender)
-                m_parent->m_buffer->PushFECPacket(packet, m_stream - 1);
-        }
-    }
-}
+
+                while (m_socket->bytesAvailable() > 0)
+            {
+                QByteArray newFrame = m_socket->readAll();
+
+                int PosFirst=newFrame.indexOf(baSyncByte);
+
+                if(PosFirst!=-1)
+                {
+                if(tsFramequeue.size()>0)
+                {
+                    tsFramequeue.append(newFrame);
+
+                      newFrame=tsFramequeue;
+
+                    tsFramequeue.clear();
+
+                }
+
+                PosFirst=newFrame.indexOf(baSyncByte);
+
+
+    int remain;
+                while(PosFirst >= 0 && PosFirst < newFrame.size())
+                {
+                    if(newFrame.at(PosFirst)==0x47)
+                    {
+
+                        if(PosFirst+188<=newFrame.size())
+                        {
+
+                        FrameOUT+=newFrame.mid(PosFirst,188);
+
+                        }
+                        else
+                        {
+                        remain=PosFirst;
+                        }
+                        PosFirst= PosFirst+188;
+
+                    }
+                    else
+                    {
+                        qDebug("resyncCE");
+
+                    PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
+                    }
+
+
+                }
+                if(remain>0)
+                {
+
+                    tsFramequeue.clear();
+                tsFramequeue=newFrame.mid(remain);
+
+                }
+   }
+	else
+                {
+                    if(tsFramequeue.size()>0)
+                    {
+                        tsFramequeue.append(newFrame);
+
+                          FrameOUT+=tsFramequeue;
+
+                        tsFramequeue.clear();
+                    }
+                    else
+                    {
+                    qDebug("-1");
+                    return;
+                    }
+                }
+
+                newFrame.clear();
+            }
+          //int ganze  = FrameOUT.size()   / 188;
+           int rest =  FrameOUT.size()  %  188;
+
+           if(rest!=0)
+           {
+               qDebug("nicht 0 rest");
+               if(!FrameOUT.startsWith(baSyncByte))
+               {
+               FrameOUT.clear();
+               qDebug("clear!!.... shit");
+               }
+               FrameOUT.clear();
+
+               return;
+           }
+
+          if (0 == m_stream)
+              {
+                  if(FrameOUT.size() > 0 ) ///1 ts frame ist 188 *7 = udppacket size von 1316 && sync byte 0x47 an stelle 0
+                      {
+                          UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
+                          QByteArray &data = packet.GetDataReference();
+                          data.resize(FrameOUT.size());
+                          data = FrameOUT;
+                          if (sender_null || sender == m_sender)
+                              m_parent->m_buffer->PushDataPacket(packet);
+                      }
+
+                  else
+                      {
+                          qDebug("out of sync2");
+
+                      }
+              }
+
+          else
+              {
+                  qDebug("out of syn21212");
+
+              }
+          FrameOUT.clear();
+ }
+
 
 #define LOC_WH QString("IPTVSH(%1): ").arg(m_parent->_device)
 

@@ -141,14 +141,9 @@ void IPTVChannel::Close(void)
 
 void IPTVChannel::OpenStreamHandler(void)
 {
-    if (m_last_tuning.IsHLS())
-    {
-        m_stream_handler = HLSStreamHandler::Get(m_last_tuning);
-    }
-    else
-    {
+    
         m_stream_handler = IPTVStreamHandler::Get(m_last_tuning);
-    }
+    
 }
 
 void IPTVChannel::CloseStreamHandler(void)

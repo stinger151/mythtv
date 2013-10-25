@@ -7,7 +7,7 @@
 using namespace std;
 
 #include <QHostAddress>
-#include <QUdpSocket>
+#include <QTcpSocket>
 #include <QString>
 #include <QMutex>
 #include <QMap>
@@ -26,17 +26,18 @@ class IPTVChannel;
 class IPTVStreamHandlerReadHelper : QObject
 {
     Q_OBJECT
-
+  QByteArray FrameOUT;
+    QByteArray tsFramequeue;
   public:
     IPTVStreamHandlerReadHelper(
-        IPTVStreamHandler *p, QUdpSocket *s, uint stream);
+        IPTVStreamHandler *p, QTcpSocket *s, uint stream);
 
   public slots:
     void ReadPending(void);
 
   private:
     IPTVStreamHandler *m_parent;
-    QUdpSocket *m_socket;
+    QTcpSocket *m_socket;
     QHostAddress m_sender;
     uint m_stream;
 };
@@ -92,7 +93,7 @@ class IPTVStreamHandler : public StreamHandler
 
   protected:
     IPTVTuningData m_tuning;
-    QUdpSocket *m_sockets[IPTV_SOCKET_COUNT];
+    QTcpSocket *m_sockets[IPTV_SOCKET_COUNT];
     IPTVStreamHandlerReadHelper *m_read_helpers[IPTV_SOCKET_COUNT];
     QHostAddress m_sender[IPTV_SOCKET_COUNT];
     IPTVStreamHandlerWriteHelper *m_write_helper;

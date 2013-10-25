@@ -245,9 +245,13 @@ QString IPTVChannelFetcher::DownloadPlaylist(const QString &url,
             QString("IPTVChannelFetcher::DownloadPlaylist failed to "
                     "download from %1").arg(url));
     }
+	
     else
-        tmp = QString(data);
-
+        {tmp = QString(data);
+		 LOG(VB_GENERAL, LOG_INFO,
+            QString("IPTVChannelFetcher::DownloadPlaylist gemacht "
+                    "download from %1").arg(url));
+		}			
     return tmp.isNull() ? tmp : QString::fromUtf8(tmp.toLatin1().constData());
 }
 
