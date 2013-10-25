@@ -167,7 +167,7 @@ void IPTVStreamHandler::run(void)
             .arg(QHostAddress(QHostAddress::Any).toString()), 0,
             "", 0);
     }
-  LOG(VB_GENERAL, LOG_INFO, LOC + "pre for socket");
+  LOG(VB_GENERAL, LOG_DEBUG, LOC + "pre for socket");
     for (uint i = 0; i < IPTV_SOCKET_COUNT; i++)
     {
         QUrl url = tuning.GetURL(i);
@@ -175,20 +175,19 @@ void IPTVStreamHandler::run(void)
             continue;
 
         m_sockets[i] = new QTcpSocket();
-        m_read_helpers[i] = new IPTVStreamHandlerReadHelper(
-            this, m_sockets[i], i);
-       LOG(VB_GENERAL, LOG_INFO, LOC + "pre http GET");
+        m_read_helpers[i] = new IPTVStreamHandlerReadHelper(this, m_sockets[i], i);   
+	  LOG(VB_GENERAL, LOG_DEBUG, LOC + "pre http GET");
         if (!url.userInfo().isEmpty())
             m_sender[i] = QHostAddress(url.userInfo());
 			m_sockets[i]->connectToHost(url.host().toAscii(), 3000);	
                            m_sockets[i]->write("GET " + url.path().toAscii() + " HTTP/1.0\r\n\r\n\r\n\r\n");
                            m_sockets[i]->waitForBytesWritten(1000);
 	 }
-    LOG(VB_GENERAL, LOG_INFO, LOC + "after socket count");
+    LOG(VB_GENERAL, LOG_DEBUG, LOC + "after socket count");
         m_buffer = new UDPPacketBuffer(tuning.GetBitrate(0));
     m_write_helper = new IPTVStreamHandlerWriteHelper(this);
     m_write_helper->Start();
-LOG(VB_GENERAL, LOG_INFO, LOC + "should be running");
+LOG(VB_GENERAL, LOG_INFO, LOC + "HTTP Stream open!");
     bool error = false;
   
     if (!error)
@@ -285,7 +284,7 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                     }
                     else
                     {
-                        qDebug("resyncCE");
+                        LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM RESYNC");
 
                     PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
                     }
@@ -312,23 +311,23 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                     }
                     else
                     {
-                    qDebug("-1");
+                    
                     return;
                     }
                 }
 
                 newFrame.clear();
             }
-          //int ganze  = FrameOUT.size()   / 188;
+          
            int rest =  FrameOUT.size()  %  188;
 
            if(rest!=0)
            {
-               qDebug("nicht 0 rest");
+               
                if(!FrameOUT.startsWith(baSyncByte))
                {
                FrameOUT.clear();
-               qDebug("clear!!.... shit");
+               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM PACKETS LOST DISCARDING BUFFER");
                }
                FrameOUT.clear();
 
@@ -349,16 +348,10 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
 
                   else
                       {
-                          qDebug("out of sync2");
-
+                          LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM FRAMEOUT SIZE = 0");
                       }
               }
 
-          else
-              {
-                  qDebug("out of syn21212");
-
-              }
           FrameOUT.clear();
  }
 
