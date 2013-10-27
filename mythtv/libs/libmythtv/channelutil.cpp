@@ -1365,6 +1365,60 @@ QString ChannelUtil::GetUnknownCallsign(void)
     return tmp;
 }
 
+int ChannelUtil::GetiptvChanid(QString url)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    // find source id, so we can find manually inserted ATSC channels
+    query.prepare(" select chanid from iptv_channel where url = :CHID");
+    query.bindValue(":CHID", url);
+    if (!query.exec())
+    {
+        MythDB::DBError("Selecting chanid/iptv_channel ", query);
+        return -1;
+    }
+    if (!query.next())
+        return -1;
+
+return query.value(0).toInt();
+	}
+
+int ChannelUtil::GetchannelGrpid(int chanid)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    // find source id, so we can find manually inserted ATSC channels
+    query.prepare(" select grpid from channelgroup where chanid = :CHID");
+    query.bindValue(":CHID", chanid);
+    if (!query.exec())
+    {
+        MythDB::DBError("Selecting group chanid/iptv_channel ", query);
+        return -1;
+    }
+    if (!query.next())
+        return -1;
+
+return query.value(0).toInt();
+	}
+int ChannelUtil::GetGroupID(QString groupname)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    // find source id, so we can find manually inserted ATSC channels
+    query.prepare("SELECT grpid "
+                  "FROM channelgroupnames "
+                  "WHERE name = :GRPNM");
+    query.bindValue(":GRPNM", groupname);
+    if (!query.exec())
+    {
+        MythDB::DBError("Selecting group/channelgroupnames 2", query);
+        return -1;
+    }
+    if (!query.next())
+        return -1;
+
+return query.value(0).toInt();
+	}
 int ChannelUtil::GetChanID(int mplexid,       int service_transport_id,
                            int major_channel, int minor_channel,
                            int program_number)
@@ -1525,6 +1579,7 @@ int ChannelUtil::CreateChanID(uint sourceid, const QString &chan_num)
     // failure
     return -1;
 }
+
 
 bool ChannelUtil::CreateChannel(uint db_mplexid,
                                 uint db_sourceid,
@@ -1729,10 +1784,12 @@ bool ChannelUtil::UpdateIPTVTuningData(
 {
     MSqlQuery query(MSqlQuery::InitCon());
 QString theURL=tuning.GetDataURL().toString();
+ if(theURL.indexOf("m3u")==-1)
+	{
 int lastindex=theURL.lastIndexOf("/");
     theURL=theURL.mid(lastindex);
-    QStringList list1 = theURL.split("-");
-
+   
+	QStringList list1 = theURL.split("-");
     QString transportid1;
     QString networkid1;
      QString  serviceid1;
@@ -1758,7 +1815,7 @@ int serviceid=serviceid1.toInt();
  		
     if (!query.exec())
     {
-        MythDB::DBError("UpdateIPTVTuningData CE-- delete", query);
+        MythDB::DBError("UpdateIPTVTuningData CE-- SELECT", query);
         return false;
     }
 
@@ -1784,7 +1841,7 @@ mplexid2=0;
         query.bindValue(":NETWORKID", networkid);
         if (!query.exec())
         {
-            MythDB::DBError("UpdateIPTVTuningData CE-- data", query);
+            MythDB::DBError("UpdateIPTVTuningData CE-- INSERT", query);
             return false;
         }
 
@@ -1798,7 +1855,7 @@ mplexid2=0;
 
         if (!query.exec())
         {
-            MythDB::DBError("UpdateIPTVTuningData CE-- delete", query);
+            MythDB::DBError("UpdateIPTVTuningData CE-- SELECT", query);
             return false;
         }
         if(query.next())
@@ -1807,13 +1864,7 @@ mplexid2=0;
         }
 
     }
-    //qDebug() << query.lastError();
-
-
-
-
-   // qDebug("durch");
-   // qDebug()<<mplexid2;
+  
     query.prepare(
         "update channel "
                 "set xmltvid=:URL,serviceid=:SERVICEID ,mplexid=:MPLEXID ,useonairguide=0 where chanid=:CHANID");
@@ -1881,7 +1932,65 @@ mplexid2=0;
     }
 
     return true;
-}
+	}
+	else
+	{
+
+
+qDebug()<<theURL;
+
+	return true;
+	}
+	
+
+
+
+	}
+bool ChannelUtil::CreateGroup(QString groupname)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    query.prepare(
+        QString("insert into channelgroupnames(name) "
+                "VALUES ('%1') ").arg(groupname));
+
+    if (!query.exec() || !query.isActive())
+    {
+        MythDB::DBError("Selecting channel/dtv_multiplex", query);
+        return false;
+    }
+    return true;
+}	
+bool ChannelUtil::UpdChannelGrp(int chanid,int grpid)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    query.prepare(
+        QString("update  channelgroup set grpid  = %1 "
+                "where chanid = %2").arg(grpid).arg(chanid));
+
+    if (!query.exec() || !query.isActive())
+    {
+        MythDB::DBError("update  channelgroup set grpid ", query);
+        return false;
+    }
+    return true;
+}	
+bool ChannelUtil::SetChannelGrp(int chanid,int grpid)
+{
+    MSqlQuery query(MSqlQuery::InitCon());
+
+    query.prepare(
+        QString("insert into channelgroup (chanid,grpid)VALUES(%1,%2)").arg(chanid).arg(grpid));
+
+    if (!query.exec() || !query.isActive())
+    {
+        MythDB::DBError("insert into channelgroup (", query);
+        return false;
+    }
+    return true;
+}	
+
 bool ChannelUtil::DeleteChannel(uint channel_id)
 {
     MSqlQuery query(MSqlQuery::InitCon());
@@ -1927,6 +2036,8 @@ bool ChannelUtil::SetVisible(uint channel_id, bool visible)
     }
 
     return true;
+	
+	
 }
 
 bool ChannelUtil::SetServiceVersion(int mplexid, int version)

@@ -159,7 +159,13 @@ class MTV_PUBLIC ChannelUtil
     static int     GetChanID(int db_mplexid,    int service_transport_id,
                              int major_channel, int minor_channel,
                              int program_number);
-
+							 
+							     static int     GetGroupID(QString groupname);
+ static bool     CreateGroup(QString groupname);
+ static int     GetiptvChanid(QString groupname);
+ static int     GetchannelGrpid(int chanid);
+ static bool 	SetChannelGrp(int chanid,int grpid);
+ static bool 	UpdChannelGrp(int chanid,int grpid);
     static int     GetServiceVersion(int mplexid);
 
     // Misc gets

@@ -82,7 +82,7 @@ void IPTVChannelFetcher::run(void)
     _thread_running = true;
 
     // Step 1/4 : Get info from DB
-    QString url = CardUtil::GetVideoDevice(_cardid);
+    QString url = CardUtil::GetVideoDevice(_cardid)+"/channels.m3u";;
 
     if (_stop_now || url.isEmpty())
     {
@@ -173,11 +173,176 @@ void IPTVChannelFetcher::run(void)
                 0, 0, 0, false, false, false, QString::null,
                 QString::null, "Default", xmltvid);
             ChannelUtil::UpdateIPTVTuningData(chanid, (*it).m_tuning);
+			
         }
 
         SetNumChannelsInserted(i);
     }
 
+    if (_scan_monitor)
+    {
+        _scan_monitor->ScanAppendTextToLog(tr("Done with playlist"));
+        //_scan_monitor->ScanAppendTextToLog("");
+        //_scan_monitor->ScanPercentComplete(100);
+       // _scan_monitor->ScanComplete();
+    }
+//---------Group Test
+  // Step 1/4 : Get info from DB
+    QString GroupUrl = CardUtil::GetVideoDevice(_cardid)+"/groups.m3u";
+	//QString GroupUrl = "http://192.168.99.1:3000/groups.m3u";
+
+    if (_stop_now || GroupUrl.isEmpty())
+    {
+        LOG(VB_CHANNEL, LOG_INFO, "GROUP GroupUrl was empty");
+        _thread_running = false;
+        _stop_now = true;
+        return;
+    }
+
+    LOG(VB_CHANNEL, LOG_INFO, QString("GROUP GroupUrl: %1").arg(GroupUrl));
+
+    // Step 2/4 : Download
+    if (_scan_monitor)
+    {
+        _scan_monitor->ScanPercentComplete(5);
+        s_scan_monitor->ScanAppendTextToLog(tr("GROUP Playlist"));
+    }
+
+    QString groupList = DownloadPlaylist(GroupUrl, true);
+     //   _scan_monitor->ScanAppendTextToLog(tr("Done with grouplist Download"));
+
+    if (_stop_now || groupList.isEmpty())
+    {
+        if (groupList.isNull() && _scan_monitor)
+        {
+            _scan_monitor->ScanAppendTextToLog(
+                QCoreApplication::translate("(Common)", "Error"));
+            _scan_monitor->ScanPercentComplete(100);
+            _scan_monitor->ScanErrored(tr("Downloading GROUP Failed"));
+        }
+        _thread_running = false;
+        _stop_now = true;
+        return;
+    }
+      //  _scan_monitor->ScanAppendTextToLog(tr("Done with grouplist 2"));
+
+    // Step 3/4 : Process
+    if (_scan_monitor)
+    {
+        _scan_monitor->ScanPercentComplete(50);
+       // _scan_monitor->ScanAppendTextToLog(tr("Processing GROUPs"));
+    }
+
+    const fbox_chan_map_t groups = ParsePlaylist(groupList, this);
+       // _scan_monitor->ScanAppendTextToLog(tr("Done with grouplist 4"));
+    int workinggrpid;
+    // Step 4/4 : Finish up
+    if (_scan_monitor)
+      //  _scan_monitor->ScanAppendTextToLog(tr("Adding GROUPs"));
+    SetTotalNumChannels(groups.size());
+
+    LOG(VB_CHANNEL, LOG_INFO, QString("Found %1 GROUPs")
+        .arg(groups.size()));
+
+    fbox_chan_map_t::const_iterator groupit0 = groups.begin();
+    for (uint i = 1; groupit0 != groups.end(); ++groupit0, ++i)
+    {
+        QString channum = groupit0.key();
+        QString name    = (*groupit0).m_name;
+        QString xmltvid = (*groupit0).m_xmltvid.isEmpty() ? "" : (*groupit0).m_xmltvid;
+        //: %1 is the channel number, %2 is the channel name
+        QString msg = tr("%1 %2").arg(channum).arg(name);
+QString theURL=(*groupit0).m_tuning.GetDataURL().toString();
+        LOG(VB_CHANNEL, LOG_INFO, QString("Handling GROUP %1 %2 %3")
+            .arg(channum).arg(name).arg(theURL));
+	
+	int groupid = ChannelUtil::GetGroupID(msg); 
+       workinggrpid=groupid;
+        if (groupid <= 0)
+        {
+            if (_scan_monitor)
+            {
+                _scan_monitor->ScanAppendTextToLog(
+                    tr("Adding group %1").arg(msg));
+            }
+			ChannelUtil::CreateGroup(msg);
+         
+        }
+        else
+        {
+            if (_scan_monitor)
+            {
+                _scan_monitor->ScanAppendTextToLog(
+                    tr("Updating group %1").arg(msg));
+            }
+		
+          
+		   QString groupChannelList = DownloadPlaylist(theURL, true);
+      //  _scan_monitor->ScanAppendTextToLog(tr("Done with groupChannelList Download"));
+	
+    if (_stop_now || groupChannelList.isEmpty())
+    {
+        if (groupChannelList.isNull() && _scan_monitor)
+        {
+            _scan_monitor->ScanAppendTextToLog(
+                QCoreApplication::translate("(Common)", "Error"));
+            _scan_monitor->ScanPercentComplete(100);
+            _scan_monitor->ScanErrored(tr("Downloading groupChannelList Failed"));
+        }
+        _thread_running = false;
+        _stop_now = true;
+        return;
+    }
+       // _scan_monitor->ScanAppendTextToLog(tr("Done with groupChannelList 2"));
+
+    // Step 3/4 : Process
+    if (_scan_monitor)
+    {
+        _scan_monitor->ScanPercentComplete(35);
+     //   _scan_monitor->ScanAppendTextToLog(tr("Processing groupChannelList"));
+    }
+
+    const fbox_chan_map_t groupchannels = ParsePlaylist(groupChannelList, this);
+   //     _scan_monitor->ScanAppendTextToLog(tr("Done with groupChannelList 4"));
+
+    // Step 4/4 : Finish up
+    //if (_scan_monitor)
+   //     _scan_monitor->ScanAppendTextToLog(tr("Adding GROgroupChannelLists"));
+    SetTotalNumChannels(groupchannels.size());
+
+    LOG(VB_CHANNEL, LOG_INFO, QString("Found %1 groupChannelList")
+        .arg(groupchannels.size()));
+
+    fbox_chan_map_t::const_iterator groupit1 = groupchannels.begin();
+    for (uint i = 1; groupit1 != groupchannels.end(); ++groupit1, ++i)
+    {
+        QString channum1 = groupit1.key();
+        QString name1    = (*groupit1).m_name;
+        QString xmltvid1 = (*groupit1).m_xmltvid.isEmpty() ? "" : (*groupit1).m_xmltvid;
+        //: %1 is the channel number, %2 is the channel name
+        QString msg = tr("%1 %2").arg(channum1).arg(name1);
+QString theURL1=(*groupit1).m_tuning.GetDataURL().toString();
+        LOG(VB_CHANNEL, LOG_INFO, QString("Handling groupChannelList %1 %2 %3")
+            .arg(channum1).arg(name1).arg(theURL1));
+			
+			int chanid=ChannelUtil::GetiptvChanid(theURL1);
+			int grpid2=ChannelUtil::GetchannelGrpid(chanid);
+			   if (grpid2 <= 0)
+        {
+          
+			ChannelUtil::SetChannelGrp(chanid,workinggrpid);
+        }
+        else
+        {
+            ChannelUtil::UpdChannelGrp(chanid,workinggrpid);
+		}
+		
+        SetNumChannelsInserted(i);
+    }
+
+	
+	}
+	}
     if (_scan_monitor)
     {
         _scan_monitor->ScanAppendTextToLog(tr("Done"));
@@ -186,6 +351,10 @@ void IPTVChannelFetcher::run(void)
         _scan_monitor->ScanComplete();
     }
 
+	
+	
+	
+	
     _thread_running = false;
     _stop_now = true;
 }
