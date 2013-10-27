@@ -175,6 +175,7 @@ void IPTVStreamHandler::run(void)
             continue;
 
         m_sockets[i] = new QTcpSocket();
+		 m_sockets[i]->setSocketOption(QAbstractSocket::LowDelayOption, 1);
         m_read_helpers[i] = new IPTVStreamHandlerReadHelper(this, m_sockets[i], i);   
 	  LOG(VB_GENERAL, LOG_DEBUG, LOC + "pre http GET");
         if (!url.userInfo().isEmpty())
