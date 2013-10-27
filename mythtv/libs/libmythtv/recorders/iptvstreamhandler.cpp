@@ -248,22 +248,21 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                 QByteArray newFrame = m_socket->readAll();
 
                 int PosFirst=newFrame.indexOf(baSyncByte);
-
+				
+				
                 if(PosFirst!=-1)
                 {
+				// LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM  syncbyte found @ = %1").arg(PosFirst));
                 if(tsFramequeue.size()>0)
                 {
+				//LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM newFrame attached to tsFramequeue  SIZE =  %1 newframe Size = %2").arg(tsFramequeue.size()).arg(newFrame.size()));
                     tsFramequeue.append(newFrame);
-
                       newFrame=tsFramequeue;
-
+					 
                     tsFramequeue.clear();
-
+					//PosFirst=newFrame.indexOf(baSyncByte);					
                 }
-
-                PosFirst=newFrame.indexOf(baSyncByte);
-
-
+				
     int remain;
                 while(PosFirst >= 0 && PosFirst < newFrame.size())
                 {
@@ -285,16 +284,18 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                     }
                     else
                     {
-                        LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM RESYNC");
+                     //   LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM Not starting with 0x47 RESYNC");
 
                     PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
+					//newFrame=newFrame.mid(PosFirst); //new
+					//PosFirst=0;//new
                     }
 
 
                 }
                 if(remain>0)
                 {
-
+			//	LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM Incomplete TS packet written to new tsFramequeue");
                     tsFramequeue.clear();
                 tsFramequeue=newFrame.mid(remain);
 
@@ -302,6 +303,7 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
    }
 	else
                 {
+				 LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM No Sync Byte in TCP Stream written to tsFramequeue ");
                     if(tsFramequeue.size()>0)
                     {
                         tsFramequeue.append(newFrame);
@@ -312,7 +314,7 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                     }
                     else
                     {
-                    
+                     LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM unexpectetd ");
                     return;
                     }
                 }
@@ -328,10 +330,10 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                if(!FrameOUT.startsWith(baSyncByte))
                {
                FrameOUT.clear();
-               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM PACKETS LOST DISCARDING BUFFER");
+               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM PACKETS LOST DISCARDING BUFFER1");
                }
                FrameOUT.clear();
-
+				LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM Buffer / 188 Failed FrameOUT Cleared");
                return;
            }
 
@@ -343,8 +345,10 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                           QByteArray &data = packet.GetDataReference();
                           data.resize(FrameOUT.size());
                           data = FrameOUT;
+						   LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM Frame to Mythtv Size = %1").arg(FrameOUT.size()));
                           if (sender_null || sender == m_sender)
                               m_parent->m_buffer->PushDataPacket(packet);
+
                       }
 
                   else
@@ -352,6 +356,10 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
                           LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM FRAMEOUT SIZE = 0");
                       }
               }
+			  else
+			  {
+			   LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM m_stream != 0");
+			  }
 
           FrameOUT.clear();
  }
