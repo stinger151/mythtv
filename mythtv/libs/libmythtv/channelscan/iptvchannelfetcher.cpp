@@ -205,7 +205,7 @@ void IPTVChannelFetcher::run(void)
     if (_scan_monitor)
     {
         _scan_monitor->ScanPercentComplete(5);
-        s_scan_monitor->ScanAppendTextToLog(tr("GROUP Playlist"));
+        _scan_monitor->ScanAppendTextToLog(tr("GROUP Playlist"));
     }
 
     QString groupList = DownloadPlaylist(GroupUrl, true);
