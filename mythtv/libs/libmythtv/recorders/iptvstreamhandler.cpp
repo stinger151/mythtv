@@ -234,6 +234,9 @@ IPTVStreamHandlerReadHelper::IPTVStreamHandlerReadHelper(
 
 void IPTVStreamHandlerReadHelper::ReadPending(void)
 {
+  int rest1 =  m_socket->bytesAvailable()  %  188;
+  if (rest1 != 0)
+        return;
    
   QByteArray baSyncByte;
         baSyncByte.resize(1);
@@ -241,96 +244,16 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
         QHostAddress sender;
     
        bool sender_null = m_sender.isNull();
-
-
-                while (m_socket->bytesAvailable() > 0)
-            {
-                QByteArray newFrame = m_socket->readAll();
-
-                int PosFirst=newFrame.indexOf(baSyncByte);
-				
-				
-                if(PosFirst!=-1)
-                {
-				// LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM  syncbyte found @ = %1").arg(PosFirst));
-                if(tsFramequeue.size()>0)
-                {
-				//LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM newFrame attached to tsFramequeue  SIZE =  %1 newframe Size = %2").arg(tsFramequeue.size()).arg(newFrame.size()));
-                    tsFramequeue.append(newFrame);
-                      newFrame=tsFramequeue;
-					 
-                    tsFramequeue.clear();
-					//PosFirst=newFrame.indexOf(baSyncByte);					
-                }
-				
-    int remain;
-                while(PosFirst >= 0 && PosFirst < newFrame.size())
-                {
-                    if(newFrame.at(PosFirst)==0x47)
-                    {
-
-                        if(PosFirst+188<=newFrame.size())
-                        {
-
-                        FrameOUT+=newFrame.mid(PosFirst,188);
-
-                        }
-                        else
-                        {
-                        remain=PosFirst;
-                        }
-                        PosFirst= PosFirst+188;
-
-                    }
-                    else
-                    {
-                     //   LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM Not starting with 0x47 RESYNC");
-
-                    PosFirst=newFrame.indexOf(baSyncByte,PosFirst+1);
-					//newFrame=newFrame.mid(PosFirst); //new
-					//PosFirst=0;//new
-                    }
-
-
-                }
-                if(remain>0)
-                {
-			//	LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM Incomplete TS packet written to new tsFramequeue");
-                    tsFramequeue.clear();
-                tsFramequeue=newFrame.mid(remain);
-
-                }
-   }
-	else
-                {
-				 LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM No Sync Byte in TCP Stream written to tsFramequeue ");
-                    if(tsFramequeue.size()>0)
-                    {
-                        tsFramequeue.append(newFrame);
-
-                          FrameOUT+=tsFramequeue;
-
-                        tsFramequeue.clear();
-                    }
-                    else
-                    {
-                     LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM unexpectetd ");
-                    return;
-                    }
-                }
-
-                newFrame.clear();
-            }
+  FrameOUT = m_socket->readAll();
           
-           int rest =  FrameOUT.size()  %  188;
 
-           if(rest!=0)
+           if(rest1!=0)
            {
                
                if(!FrameOUT.startsWith(baSyncByte))
                {
                FrameOUT.clear();
-               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM PACKETS LOST DISCARDING BUFFER1");
+               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM not starting with sync byte.PACKETS LOST DISCARDING BUFFER1");
                }
                FrameOUT.clear();
 				LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM Buffer / 188 Failed FrameOUT Cleared");
