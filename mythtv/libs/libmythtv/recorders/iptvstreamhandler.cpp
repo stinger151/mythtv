@@ -234,9 +234,9 @@ IPTVStreamHandlerReadHelper::IPTVStreamHandlerReadHelper(
 
 void IPTVStreamHandlerReadHelper::ReadPending(void)
 {
-  int rest1 =  m_socket->bytesAvailable()  %  188;
-  if (rest1 != 0)
-        return;
+  //int rest1 =  m_socket->bytesAvailable()  %  188;
+  //if (rest1 != 0)
+   //     return;
    
   QByteArray baSyncByte;
         baSyncByte.resize(1);
@@ -244,50 +244,78 @@ void IPTVStreamHandlerReadHelper::ReadPending(void)
         QHostAddress sender;
     
        bool sender_null = m_sender.isNull();
-  FrameOUT = m_socket->readAll();
-          
 
-           if(rest1!=0)
-           {
-               
-               if(!FrameOUT.startsWith(baSyncByte))
-               {
-               FrameOUT.clear();
-               LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM not starting with sync byte.PACKETS LOST DISCARDING BUFFER1");
-               }
-               FrameOUT.clear();
-				LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM Buffer / 188 Failed FrameOUT Cleared");
-               return;
-           }
+ FrameOUT = m_socket->readAll();
+          int newFramesize = FrameOUT.size();
 
-          if (0 == m_stream)
+ if (0 == m_stream)
               {
-                  if(FrameOUT.size() > 0 ) ///1 ts frame ist 188 *7 = udppacket size von 1316 && sync byte 0x47 an stelle 0
-                      {
+                
+ int rest =  newFramesize  %  188;
+ if(rest==0&&tsFramequeue.size()==0)
+	{           
                           UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
                           QByteArray &data = packet.GetDataReference();
                           data.resize(FrameOUT.size());
                           data = FrameOUT;
-						   LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM Frame to Mythtv Size = %1").arg(FrameOUT.size()));
+						   LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM Clean Frame from Stream to Mythtv Size = %1").arg(FrameOUT.size()));
                           if (sender_null || sender == m_sender)
                               m_parent->m_buffer->PushDataPacket(packet);
 
-                      }
-
-                  else
-                      {
-                          LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM FRAMEOUT SIZE = 0");
-                      }
-              }
+          FrameOUT.clear();
+		  
+	}
+	else
+	{
+	LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM %188 !=0");
+	if(((tsFramequeue.size()+newFramesize)%188) == 0)
+                 {
+				 tsFramequeue.append(FrameOUT);
+                  FrameOUT=tsFramequeue;
+				  tsFramequeue.clear();
+				  UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
+                          QByteArray &data = packet.GetDataReference();
+                          data.resize(FrameOUT.size());
+                          data = FrameOUT;
+						   LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM appended Frame & send to Mythtv Size = %1").arg(FrameOUT.size()));
+                          if (sender_null || sender == m_sender)
+                              m_parent->m_buffer->PushDataPacket(packet);
+							  
+			
+				   FrameOUT.clear();
+				 }
+				 else
+				 {		 
+				 LOG(VB_RECORD, LOG_DEBUG,  "TCP /HTTP STREAM created Framequeue for next round");
+				int fullframes  = FrameOUT.size()   / 188;
+				fullframes=fullframes*188;
+				tsFramequeue=FrameOUT.mid(fullframes);
+				FrameOUT.truncate(fullframes);
+			UDPPacket packet(m_parent->m_buffer->GetEmptyPacket());
+                          QByteArray &data = packet.GetDataReference();
+                          data.resize(FrameOUT.size());
+                          data = FrameOUT;
+						   LOG(VB_RECORD, LOG_DEBUG,QString("TCP /HTTP STREAM truncated Frame & send to Mythtv Size = %1").arg(FrameOUT.size()));
+                          if (sender_null || sender == m_sender)
+                              m_parent->m_buffer->PushDataPacket(packet);
+							  
+			
+				   FrameOUT.clear();
+				
+					}
+	
+	
+	
+	
+	}
+	 }
 			  else
 			  {
 			   LOG(VB_RECORD, LOG_ERR,  "TCP /HTTP STREAM m_stream != 0");
-			  }
-
-          FrameOUT.clear();
- }
-
-
+			  }	  
+	
+	}
+ 
 #define LOC_WH QString("IPTVSH(%1): ").arg(m_parent->_device)
 
 void IPTVStreamHandlerWriteHelper::timerEvent(QTimerEvent*)
